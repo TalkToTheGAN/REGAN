@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+
 class NLLLoss(nn.Module):
     """Self-Defined NLLLoss Function
 

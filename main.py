@@ -19,6 +19,7 @@ from discriminator import Discriminator
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
+
 # ================== Parameter Definition =================
 
 parser = argparse.ArgumentParser(description='Training Parameter')
@@ -26,22 +27,30 @@ parser.add_argument('--cuda', action='store', default=None, type=int)
 opt = parser.parse_args()
 print(opt)
 
-# Basic Training Paramters
+# Basic Training Parameters
+THC_CACHING_ALLOCATOR=0
 SEED = 88
 BATCH_SIZE = 64
-TOTAL_BATCH = 200
+TOTAL_BATCH = 2
 GENERATED_NUM = 10000
 POSITIVE_FILE = 'real.data'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
-PRE_EPOCH_NUM = 120
+PRE_EPOCH_GEN = 1
+PRE_EPOCH_DIS = 1
+PRE_ITER_DIS = 3
+UPDATE_RATE = 0.8
+G_STEPS = 1
+D_STEPS = 4
+D_EPOCHS = 2
 
 if opt.cuda is not None and opt.cuda >= 0:
     torch.cuda.set_device(opt.cuda)
     opt.cuda = True
+print(opt.cuda)
 
-# Genrator Parameters
+# Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
 g_sequence_len = 20
@@ -50,7 +59,6 @@ g_sequence_len = 20
 d_emb_dim = 64
 d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-
 d_dropout = 0.75
 d_num_class = 2
 
@@ -69,8 +77,8 @@ def generate_samples(model, batch_size, generated_num, output_file):
 def train_epoch(model, data_iter, criterion, optimizer):
     total_loss = 0.
     total_words = 0.
-    for (data, target) in data_iter:#tqdm(
-        #data_iter, mininterval=2, desc=' - Training', leave=False):
+    for (data, target) in data_iter:
+    	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
         data = Variable(data)
         target = Variable(target)
         if opt.cuda:
@@ -89,8 +97,8 @@ def train_epoch(model, data_iter, criterion, optimizer):
 def eval_epoch(model, data_iter, criterion):
     total_loss = 0.
     total_words = 0.
-    for (data, target) in data_iter:#tqdm(
-        #data_iter, mininterval=2, desc=' - Training', leave=False):
+    for (data, target) in data_iter:
+    	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
         data = Variable(data, volatile=True)
         target = Variable(target, volatile=True)
         if opt.cuda:
@@ -143,6 +151,7 @@ def main():
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         target_lstm = target_lstm.cuda()
+
     # Generate toy data using target lstm
     print('Generating data ...')
     generate_samples(target_lstm, BATCH_SIZE, GENERATED_NUM, POSITIVE_FILE)
@@ -156,7 +165,7 @@ def main():
     if opt.cuda:
         gen_criterion = gen_criterion.cuda()
     print('Pretrain with MLE ...')
-    for epoch in range(PRE_EPOCH_NUM):
+    for epoch in range(PRE_EPOCH_GEN):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
@@ -170,14 +179,15 @@ def main():
     if opt.cuda:
         dis_criterion = dis_criterion.cuda()
     print('Pretrain Dsicriminator ...')
-    for epoch in range(5):
+    for epoch in range(PRE_EPOCH_DIS):
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
-        for _ in range(3):
+        for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer)
             print('Epoch [%d], loss: %f' % (epoch, loss))
+
     # Adversarial Training 
-    rollout = Rollout(generator, 0.8)
+    rollout = Rollout(generator, UPDATE_RATE)
     print('#####################################################')
     print('Start Adeversatial Training...\n')
     gen_gan_loss = GANLoss()
@@ -193,9 +203,9 @@ def main():
         dis_criterion = dis_criterion.cuda()
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
-        for it in range(1):
+        for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
-            # construct the input to the genrator, add zeros before samples and delete the last column
+            # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
@@ -219,10 +229,11 @@ def main():
             print('Batch [%d] True Loss: %f' % (total_batch, loss))
         rollout.update_params()
         
-        for _ in range(4):
+        for _ in range(D_STEPS):
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
-            for _ in range(2):
+            for _ in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer)
+
 if __name__ == '__main__':
     main()
