@@ -28,19 +28,23 @@ opt = parser.parse_args()
 print(opt)
 
 # Basic Training Parameters
+# general
 THC_CACHING_ALLOCATOR=0
 SEED = 88
 BATCH_SIZE = 64
-TOTAL_BATCH = 2
 GENERATED_NUM = 10000
+# related to data
 POSITIVE_FILE = 'real.data'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
+# pre-training
 PRE_EPOCH_GEN = 1
 PRE_EPOCH_DIS = 1
 PRE_ITER_DIS = 3
+# adversarial training
 UPDATE_RATE = 0.8
+TOTAL_BATCH = 2
 G_STEPS = 1
 D_STEPS = 4
 D_EPOCHS = 2
@@ -211,12 +215,33 @@ def main():
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
             targets = Variable(samples.data).contiguous().view((-1,))
+            #print(targets)
             # calculate the reward
             rewards = rollout.get_reward(samples, 16, discriminator)
             rewards = Variable(torch.Tensor(rewards))
             if opt.cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
+
+            # get the probability distribution of tokens at the output of the G
+            softmax = nn.Softmax(dim=1)
+            theta_prime = softmax(prob)
+            theta_prime = torch.sum(theta_prime, dim=0).view((-1,))/(BATCH_SIZE*g_sequence_len)
+
+            # relaxation
+            if opt.cuda:
+                z = torch.log(theta_prime)-Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
+            else:
+                z = torch.log(theta_prime)-Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
+            value, b = torch.max(z, 0)
+            if opt.cuda:
+                v = Variable(torch.rand(VOCAB_SIZE)).cuda()
+            else:
+                v = Variable(torch.rand(VOCAB_SIZE))                
+            z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[b]))
+            z_tilde[b] = -torch.log(-torch.log(v[b]))
+            print(z_tilde)
+
             loss = gen_gan_loss(prob, targets, rewards)
             gen_gan_optm.zero_grad()
             loss.backward()
