@@ -142,6 +142,32 @@ class GANLoss(nn.Module):
         loss =  -torch.sum(loss)
         return loss
 
+# New functions/classes
+
+# return probability distribution (in [0,1]) at the output of G
+def g_output_prob(prob, BATCH_SIZE, g_sequence_len):
+    softmax = nn.Softmax(dim=1)
+    theta_prime = softmax(prob)
+    theta_prime = torch.sum(theta_prime, dim=0).view((-1,))/(BATCH_SIZE*g_sequence_len)
+    return theta_prime
+
+# performs a Gumbel-Softmax reparameterization of the input
+def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
+    u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
+    if cuda:
+        u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
+    z = torch.log(theta_prime) - u
+    return z
+
+# categorical re-sampling exactly as in Backpropagating through the void - Appendix B
+def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
+    v = Variable(torch.rand(VOCAB_SIZE))
+    if cuda:
+        v = Variable(torch.rand(VOCAB_SIZE)).cuda()
+    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[b]))
+    z_tilde[b] = -torch.log(-torch.log(v[b]))
+    return z_tilde
+
 
 def main():
     random.seed(SEED)
@@ -223,24 +249,19 @@ def main():
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
 
-            # get the probability distribution of tokens at the output of the G
-            softmax = nn.Softmax(dim=1)
-            theta_prime = softmax(prob)
-            theta_prime = torch.sum(theta_prime, dim=0).view((-1,))/(BATCH_SIZE*g_sequence_len)
+            # 3.a
+            theta_prime = g_output_prob(prob, BATCH_SIZE, g_sequence_len)
 
-            # relaxation
-            if opt.cuda:
-                z = torch.log(theta_prime)-Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
-            else:
-                z = torch.log(theta_prime)-Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
+            # 3.b
+            z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
+            #print(z)
+
+            # 3.c
             value, b = torch.max(z, 0)
-            if opt.cuda:
-                v = Variable(torch.rand(VOCAB_SIZE)).cuda()
-            else:
-                v = Variable(torch.rand(VOCAB_SIZE))                
-            z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[b]))
-            z_tilde[b] = -torch.log(-torch.log(v[b]))
-            print(z_tilde)
+
+            # 3.d
+            z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
+            #print(z_tilde)
 
             loss = gen_gan_loss(prob, targets, rewards)
             gen_gan_optm.zero_grad()
