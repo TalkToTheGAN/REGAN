@@ -51,7 +51,7 @@ D_EPOCHS = 2
 
 if opt.cuda is not None and opt.cuda >= 0:
     torch.cuda.set_device(opt.cuda)
-    opt.cuda = True
+    opt.cuda = True if torch.cuda.is_available() else False
 print(opt.cuda)
 
 # Generator Parameters
