@@ -16,6 +16,7 @@ from torch.autograd import Variable
 
 from generator import Generator
 from discriminator import Discriminator
+from controlvariate import ControlVariate
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -215,6 +216,9 @@ def main():
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer)
             print('Epoch [%d], loss: %f' % (epoch, loss))
+
+    # 2.d Init C Network
+    c_phi_nn = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
 
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
