@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 class ControlVariate(nn.Module):
     """
-    A NN for optimizing c_phi(z_tilde) control variate for RELAX
+    A NN for optimizing c_phi(z) control variate for RELAX
     """
 
     def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout):
@@ -28,12 +28,12 @@ class ControlVariate(nn.Module):
         self.softmax = nn.LogSoftmax()
         self.init_parameters()
 
-    def forward(self, z_tilde):
+    def forward(self, z):
         """
         Args:
-            z_tilde: (batch_size * seq_len)
+            z: (batch_size * seq_len)
         """
-        emb = self.emb(z_tilde).unsqueeze(1)  # batch_size * 1 * seq_len * emb_dim
+        emb = self.emb(z).unsqueeze(1)  # batch_size * 1 * seq_len * emb_dim
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs]  # [batch_size * num_filter * length]
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs]  # [batch_size * num_filter]
         pred = torch.cat(pools, 1)  # batch_size * num_filters_sum
