@@ -16,7 +16,7 @@ class ControlVariate(nn.Module):
     A NN for optimizing c_phi(z) control variate for RELAX
     """
 
-    def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout):
+    def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout, batch_size, g_sequence_len):
         super(ControlVariate, self).__init__()
         self.emb = nn.Embedding(vocab_size, emb_dim)
         self.convs = nn.ModuleList([
@@ -26,12 +26,14 @@ class ControlVariate(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.lin = nn.Linear(sum(num_filters), num_classes)
         self.softmax = nn.LogSoftmax()
+        self.batch_size = batch_size
+        self.g_sequence_len = g_sequence_len
         self.init_parameters()
 
     def forward(self, z):
         """
         Args:
-            z: (batch_size * seq_len)
+            z: (batch_size * g_seq_len, vocab_size)
         """
         emb = self.emb(z).unsqueeze(1)  # batch_size * 1 * seq_len * emb_dim
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs]  # [batch_size * num_filter * length]

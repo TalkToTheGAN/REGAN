@@ -128,6 +128,16 @@ def eval_epoch(model, data_iter, criterion):
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
+#3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
+def c_phi_out(c_phi_hat,theta_prime,discriminator):
+    z = gumbel_softmax(theta_prime,VOCAB_SIZE,opt.cuda)
+    value, b = torch.max(z,0)
+    z_tilde = categorical_re_param(theta_prime,VOCAB_SIZE,b,opt.cuda)
+    z_gs = gumbel_softmax(z,VOCAB_SIZE,opt.cuda)
+    z_tilde_gs = gumbel_softmax(z_tilde,VOCAB_SIZE,opt.cuda)
+    return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
+
+
 class GANLoss(nn.Module):
     """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
     def __init__(self):
@@ -191,13 +201,13 @@ def main():
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     # 2.d Init C Network
-    c_phi_nn = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    c_phi_hat = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout, batch_size=BATCH_SIZE, g_sequence_len=g_sequence_len)
 
     if opt.cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         target_lstm = target_lstm.cuda()
-        c_phi_nn = c_phi_nn.cuda()
+        c_phi_hat = c_phi_hat.cuda()
 
     # Generate toy data using target lstm
     print('Generating data ...')
@@ -232,11 +242,6 @@ def main():
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer)
             print('Epoch [%d], loss: %f' % (epoch, loss))
-
-
-    # Pretrain C_phi_NN:
-    
-
 
 
     # Adversarial Training 
@@ -300,11 +305,17 @@ def main():
                 # 3.d
                 z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
 
+                # 3.e and f
+                c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, theta_prime, discriminator)
+                print(c_phi_z, c_phi_z_tilde)
+
+
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
             eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
             loss = eval_epoch(target_lstm, eval_iter, gen_criterion)
             print('Batch [%d] True Loss: %f' % (total_batch, loss))
+
         if GRADIENT_ESTIMATOR == 'REINFORCE':
             rollout.update_params()
         
