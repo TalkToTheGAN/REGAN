@@ -16,10 +16,11 @@ from torch.autograd import Variable
 
 class Rollout(object):
     """Roll-out policy"""
-    def __init__(self, model, update_rate):
+    def __init__(self, model, update_rate, gpu=False):
         self.ori_model = model
         self.own_model = copy.deepcopy(model)
         self.update_rate = update_rate
+        self.gpu = gpu
 
     def get_reward(self, x, num, discriminator):
         """
@@ -49,7 +50,9 @@ class Rollout(object):
                 rewards.append(pred)
             else:
                 rewards[seq_len-1] += pred
+
         rewards = np.transpose(np.array(rewards)) / (1.0 * num) # batch_size * seq_len
+
         return rewards
 
     def update_params(self):

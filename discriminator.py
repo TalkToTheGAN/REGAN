@@ -15,7 +15,7 @@ class Discriminator(nn.Module):
     architecture: Embedding >> Convolution >> Max-pooling >> Softmax
     """
 
-    def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout):
+    def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout, gpu=False):
         super(Discriminator, self).__init__()
         self.emb = nn.Embedding(vocab_size, emb_dim)
         self.convs = nn.ModuleList([nn.Conv2d(1, n, (f, emb_dim)) for (n, f) in zip(num_filters, filter_sizes)])
@@ -23,6 +23,8 @@ class Discriminator(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.lin = nn.Linear(sum(num_filters), num_classes)
         self.softmax = nn.LogSoftmax()
+        self.gpu = gpu
+
         self.init_parameters()
     
     def forward(self, x):
@@ -30,6 +32,7 @@ class Discriminator(nn.Module):
         Args:
             x: (batch_size * seq_len)
         """
+
         emb = self.emb(x).unsqueeze(1)  # batch_size * 1 * seq_len * emb_dim
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs]  # [batch_size * num_filter * length]
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]

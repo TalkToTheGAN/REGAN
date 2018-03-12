@@ -37,15 +37,18 @@ SEED = 88
 BATCH_SIZE = 64
 GENERATED_NUM = 10000
 GRADIENT_ESTIMATOR = 'REINFORCE' # 'REINFORCE' or 'RELAX' 
+
 # related to data
 POSITIVE_FILE = 'real.data'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
+
 # pre-training
-PRE_EPOCH_GEN = 5 if isDebug else 120   #Note: Need at least > 150 to avoid insufficient pre-training (Fig 4)
-PRE_EPOCH_DIS = 5
+PRE_EPOCH_GEN = 1 if isDebug else 120   #Note: Need at least > 150 to avoid insufficient pre-training (Fig 4)
+PRE_EPOCH_DIS = 1 if isDebug else 5
 PRE_ITER_DIS = 3
+
 # adversarial training
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 2
@@ -129,13 +132,17 @@ def eval_epoch(model, data_iter, criterion):
     return math.exp(total_loss / total_words)
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
-def c_phi_out(c_phi_hat,theta_prime,discriminator):
+def c_phi_out(c_phi_hat, theta_prime,discriminator):
+
+    if isDebug: print("\tc_phi_out()")
+
     z = gumbel_softmax(theta_prime,VOCAB_SIZE,opt.cuda)
     value, b = torch.max(z,0)
     z_tilde = categorical_re_param(theta_prime,VOCAB_SIZE,b,opt.cuda)
     z_gs = gumbel_softmax(z,VOCAB_SIZE,opt.cuda)
     z_tilde_gs = gumbel_softmax(z_tilde,VOCAB_SIZE,opt.cuda)
-    return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
+
+    return c_phi_hat.forward(z) + discriminator.forward(z_gs), c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
 
 
 class GANLoss(nn.Module):
@@ -198,10 +205,10 @@ def main():
 
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
-    discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout, gpu=opt.cuda)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     # 2.d Init C Network
-    c_phi_hat = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout, batch_size=BATCH_SIZE, g_sequence_len=g_sequence_len)
+    c_phi_hat = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout, batch_size=BATCH_SIZE, g_sequence_len=g_sequence_len, gpu=opt.cuda)
 
     if opt.cuda:
         generator = generator.cuda()
@@ -247,8 +254,9 @@ def main():
     # Adversarial Training 
     print('#####################################################')
     print('Start Adeversatial Training...\n')
+
     if GRADIENT_ESTIMATOR == 'REINFORCE':
-        rollout = Rollout(generator, UPDATE_RATE)
+        rollout = Rollout(generator, UPDATE_RATE, opt.cuda)
         gen_gan_loss = GANLoss()
         if opt.cuda:
             gen_gan_loss = gen_gan_loss.cuda()
@@ -260,6 +268,7 @@ def main():
     dis_optimizer = optim.Adam(discriminator.parameters())
     if opt.cuda:
         dis_criterion = dis_criterion.cuda()
+
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
         for it in range(G_STEPS):
