@@ -5,7 +5,7 @@ import random
 import math
 
 import argparse
-import tqdm
+from tqdm import tqdm
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from torch.autograd import Variable
 
 from generator import Generator
 from discriminator import Discriminator
+from controlvariate import ControlVariate
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -26,6 +27,8 @@ parser = argparse.ArgumentParser(description='Training Parameter')
 parser.add_argument('--cuda', action='store', default=None, type=int)
 opt = parser.parse_args()
 print(opt)
+
+isDebug = True
 
 # Basic Training Parameters
 # general
@@ -40,8 +43,8 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
 # pre-training
-PRE_EPOCH_GEN = 1
-PRE_EPOCH_DIS = 1
+PRE_EPOCH_GEN = 5 if isDebug else 120   #Note: Need at least > 150 to avoid insufficient pre-training (Fig 4)
+PRE_EPOCH_DIS = 5
 PRE_ITER_DIS = 3
 # adversarial training
 UPDATE_RATE = 0.8
@@ -70,6 +73,9 @@ d_num_class = 2
 
 
 def generate_samples(model, batch_size, generated_num, output_file):
+
+    if isDebug: print("\tgenerate_samples")
+
     samples = []
     for _ in range(int(generated_num / batch_size)):
         sample = model.sample(batch_size, g_sequence_len).cpu().data.numpy().tolist()
@@ -80,6 +86,9 @@ def generate_samples(model, batch_size, generated_num, output_file):
             fout.write('%s\n' % string)
 
 def train_epoch(model, data_iter, criterion, optimizer):
+
+    if isDebug: print("\ttrain_epoch")
+
     total_loss = 0.
     total_words = 0.
     for (data, target) in data_iter:
@@ -100,6 +109,9 @@ def train_epoch(model, data_iter, criterion, optimizer):
     return math.exp(total_loss / total_words)
 
 def eval_epoch(model, data_iter, criterion):
+
+    if isDebug: print("\teval_epoch")
+
     total_loss = 0.
     total_words = 0.
     for (data, target) in data_iter:
@@ -178,10 +190,14 @@ def main():
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
+    # 2.d Init C Network
+    c_phi_nn = ControlVariate(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+
     if opt.cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         target_lstm = target_lstm.cuda()
+        c_phi_nn = c_phi_nn.cuda()
 
     # Generate toy data using target lstm
     print('Generating data ...')
@@ -195,8 +211,8 @@ def main():
     gen_optimizer = optim.Adam(generator.parameters())
     if opt.cuda:
         gen_criterion = gen_criterion.cuda()
-    print('Pretrain with MLE ...')
-    for epoch in range(PRE_EPOCH_GEN):
+    print('Pretraining Generator with MLE ...')
+    for epoch in tqdm(range(PRE_EPOCH_GEN)):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
@@ -209,13 +225,19 @@ def main():
     dis_optimizer = optim.Adam(discriminator.parameters())
     if opt.cuda:
         dis_criterion = dis_criterion.cuda()
-    print('Pretrain Dsicriminator ...')
+    print('Pretraining Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer)
             print('Epoch [%d], loss: %f' % (epoch, loss))
+
+
+    # Pretrain C_phi_NN:
+    
+
+
 
     # Adversarial Training 
     print('#####################################################')
@@ -287,6 +309,7 @@ def main():
             rollout.update_params()
         
         for _ in range(D_STEPS):
+            #Update Discriminator
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for _ in range(D_EPOCHS):
