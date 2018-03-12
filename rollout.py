@@ -25,22 +25,6 @@ class Rollout(object):
         """
         Args:
             x : (batch_size, seq_len) input data
-            discriminator : discrimanator model
-            Directly outputting the prob of one sequence (no rollout)
-        """
-        batch_size = x.size(0)
-        seq_len = x.size(1)
-
-        samples = self.own_model.sample(batch_size, seq_len, x)
-        pred = discriminator(samples)
-        pred = pred.cpu().data[:,1].numpy()
-        
-        return pred
-    
-    def get_reward_mc(self, x, num, discriminator):
-        """
-        Args:
-            x : (batch_size, seq_len) input data
             num : roll-out number
             discriminator : discrimanator model
         """
@@ -57,6 +41,7 @@ class Rollout(object):
                     rewards.append(pred)
                 else:
                     rewards[l-1] += pred
+
             # for the last token
             pred = discriminator(x)
             pred = pred.cpu().data[:, 1].numpy()
