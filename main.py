@@ -82,6 +82,7 @@ def generate_samples(model, batch_size, generated_num, output_file):
             string = ' '.join([str(s) for s in sample])
             fout.write('%s\n' % string)
 
+
 def train_epoch(model, data_iter, criterion, optimizer):
     total_loss = 0.
     total_words = 0.
@@ -119,33 +120,6 @@ def eval_epoch(model, data_iter, criterion):
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
-class GANLoss(nn.Module):
-    """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
-    def __init__(self):
-        super(GANLoss, self).__init__()
-
-    def forward(self, prob, target, reward):
-        """
-        Args:
-            prob: (N, C), torch Variable 
-            target : (N, ), torch Variable
-            reward : (N, ), torch Variable
-        """
-        N = target.size(0)
-        C = prob.size(1)
-        one_hot = torch.zeros((N, C))
-        if prob.is_cuda:
-            one_hot = one_hot.cuda()
-        one_hot.scatter_(1, target.data.view((-1,1)), 1)
-        one_hot = one_hot.type(torch.ByteTensor)
-        one_hot = Variable(one_hot)
-        if prob.is_cuda:
-            one_hot = one_hot.cuda()
-        loss = torch.masked_select(prob, one_hot)
-        loss = loss * reward
-        loss =  -torch.sum(loss)
-        return loss
-
 # New functions/classes
 
 # return probability distribution (in [0,1]) at the output of G
@@ -170,6 +144,66 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
     z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
     return z_tilde
+
+#3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
+def c_phi_out(c_phi_hat,theta_prime,discriminator):
+    z = gumbel_softmax(theta_prime,VOCAB_SIZE,opt.cuda)
+    value, b = torch.max(z,0)
+    z_tilde = categorical_re_param(theta_prime,VOCAB_SIZE,b,opt.cuda)
+    z_gs = gumbel_softmax(z,VOCAB_SIZE,opt.cuda)
+    z_tilde_gs = gumbel_softmax(z_tilde,VOCAB_SIZE,opt.cuda)
+    return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
+
+
+class GANLoss(nn.Module):
+    """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
+    def __init__(self):
+        super(GANLoss, self).__init__()
+
+    '''def forward(self, prob, target, reward):
+        """
+        Args:
+            prob: (N, C), torch Variable 
+            target : (N, ), torch Variable
+            reward : (N, ), torch Variable
+        """
+        N = target.size(0)
+        C = prob.size(1)
+        one_hot = torch.zeros((N, C))
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        one_hot.scatter_(1, target.data.view((-1,1)), 1)
+        one_hot = one_hot.type(torch.ByteTensor)
+        one_hot = Variable(one_hot)
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        loss = torch.masked_select(prob, one_hot)
+        loss = loss * reward
+        loss =  -torch.sum(loss)
+        return loss'''
+    
+    def forward(self,prob,target,reward,c_phi_hat,discriminator):
+        """
+        Args:
+            prob: (N, C), torch Variable 
+            target : (N, ), torch Variable
+        """
+        N = target.size(0)
+        C = prob.size(1)
+        one_hot = torch.zeros((N, C))
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        one_hot.scatter_(1, target.data.view((-1,1)), 1)
+        one_hot = one_hot.type(torch.ByteTensor)
+        one_hot = Variable(one_hot)
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        loss = torch.masked_select(prob, one_hot)
+        c_phi_z,c_phi_z_tilde = c_phi_out(c_phi_hat,prob,discriminator)
+        loss = loss*(reward-c_phi_z_tilde)+c_phi_z-c_phi_z_tilde
+        loss =  -torch.sum(loss)
+        return loss
+
 
 
 def main():
@@ -271,14 +305,12 @@ def main():
             z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
             print(z_tilde.size())
 
-            # 3.f
-            c_phi_hat_z = c_phi_hat(z)
-            print(c_phi_hat_z)
-            c_phi_hat_z_tilde = c_phi_hat(z_tilde)
-            print(c_phi_hat_z_tilde)            
+            # 3.e and f
+            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat,theta_prime,discriminator) 
+            print(c_phi_z,c_phi_z_tilde)      
 
 
-            loss = gen_gan_loss(prob, targets, rewards)
+            loss = gen_gan_loss(prob, targets, rewards,c_phi_hat,discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()
             gen_gan_optm.step()
