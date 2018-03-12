@@ -16,6 +16,7 @@ from torch.autograd import Variable
 
 from generator import Generator
 from discriminator import Discriminator
+from annex_network import AnnexNetwork
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -31,7 +32,7 @@ print(opt)
 # general
 THC_CACHING_ALLOCATOR=0
 SEED = 88
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'real.data'
@@ -66,6 +67,9 @@ d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
 d_dropout = 0.75
 d_num_class = 2
 
+# Annex network parameters
+c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_num_filters = [12, 25, 25, 12, 12, 20]
 
 
 def generate_samples(model, batch_size, generated_num, output_file):
@@ -145,10 +149,9 @@ class GANLoss(nn.Module):
 # New functions/classes
 
 # return probability distribution (in [0,1]) at the output of G
-def g_output_prob(prob, BATCH_SIZE, g_sequence_len):
-    softmax = nn.Softmax(dim=1)
+def g_output_prob(prob):
+    softmax = nn.Softmax(dim=0)
     theta_prime = softmax(prob)
-    theta_prime = torch.sum(theta_prime, dim=0).view((-1,))/(BATCH_SIZE*g_sequence_len)
     return theta_prime
 
 # performs a Gumbel-Softmax reparameterization of the input
@@ -161,11 +164,11 @@ def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
 
 # categorical re-sampling exactly as in Backpropagating through the void - Appendix B
 def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
-    v = Variable(torch.rand(VOCAB_SIZE))
+    v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
-        v = Variable(torch.rand(VOCAB_SIZE)).cuda()
-    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[b]))
-    z_tilde[b] = -torch.log(-torch.log(v[b]))
+        v = v.cuda()
+    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
+    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
     return z_tilde
 
 
@@ -176,10 +179,12 @@ def main():
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     if opt.cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
+        c_phi_hat = c_phi_hat.cuda()
         target_lstm = target_lstm.cuda()
 
     # Generate toy data using target lstm
@@ -235,11 +240,13 @@ def main():
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
+            print(samples.size())
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
+            print(inputs.size())
             targets = Variable(samples.data).contiguous().view((-1,))
             #print(targets)
             # calculate the reward
@@ -248,20 +255,28 @@ def main():
             if opt.cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
+            print(prob.size())
 
             # 3.a
-            theta_prime = g_output_prob(prob, BATCH_SIZE, g_sequence_len)
+            theta_prime = g_output_prob(prob)
 
             # 3.b
             z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
-            #print(z)
+            print(z.size())
 
             # 3.c
             value, b = torch.max(z, 0)
 
             # 3.d
             z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
-            #print(z_tilde)
+            print(z_tilde.size())
+
+            # 3.f
+            c_phi_hat_z = c_phi_hat(z)
+            print(c_phi_hat_z)
+            c_phi_hat_z_tilde = c_phi_hat(z_tilde)
+            print(c_phi_hat_z_tilde)            
+
 
             loss = gen_gan_loss(prob, targets, rewards)
             gen_gan_optm.zero_grad()
