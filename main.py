@@ -150,7 +150,9 @@ class GANLoss(nn.Module):
     def __init__(self):
         super(GANLoss, self).__init__()
 
-    def forward(self, prob, target, reward):
+
+    def forward_reinforce(self, prob, target, reward):
+
         """
         Args:
             prob: (N, C), torch Variable 
@@ -170,6 +172,32 @@ class GANLoss(nn.Module):
         loss = torch.masked_select(prob, one_hot)
         loss = loss * reward
         loss =  -torch.sum(loss)
+
+        return loss
+    
+    def forward(self,prob,target,reward,c_phi_hat,discriminator):
+        """
+        Args:
+            prob: (N, C), torch Variable 
+            target : (N, ), torch Variable
+        """
+        N = target.size(0)
+        C = prob.size(1)
+        one_hot = torch.zeros((N, C))
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        one_hot.scatter_(1, target.data.view((-1,1)), 1)
+        one_hot = one_hot.type(torch.ByteTensor)
+        one_hot = Variable(one_hot)
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        loss = torch.masked_select(prob, one_hot)
+        c_phi_z,c_phi_z_tilde = c_phi_out(c_phi_hat,prob,discriminator)
+        c_phi_z_tilde = c_phi_z_tilde[:,1]
+        c_phi_z = c_phi_z[:,1]
+        loss = loss*(reward-c_phi_z_tilde)+c_phi_z-c_phi_z_tilde
+        loss =  -torch.sum(loss)
+
         return loss
 
 # New functions/classes
@@ -273,51 +301,46 @@ def main():
         ## Train the generator for one step
         for it in range(G_STEPS):
 
-            if GRADIENT_ESTIMATOR == 'REINFORCE':
-                samples = generator.sample(BATCH_SIZE, g_sequence_len)
-                # construct the input to the generator, add zeros before samples and delete the last column
-                zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
-                if samples.is_cuda:
-                    zeros = zeros.cuda()
-                inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
-                targets = Variable(samples.data).contiguous().view((-1,))
-                # calculate the reward
-                rewards = rollout.get_reward(samples, 16, discriminator)
-                rewards = Variable(torch.Tensor(rewards))
-                if opt.cuda:
-                    rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
-                prob = generator.forward(inputs)
-                loss = gen_gan_loss(prob, targets, rewards)
-                gen_gan_optm.zero_grad()
-                loss.backward()
-                gen_gan_optm.step()
+            samples = generator.sample(BATCH_SIZE, g_sequence_len)
+            print(samples.size())
+            # construct the input to the generator, add zeros before samples and delete the last column
+            zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
+            if samples.is_cuda:
+                zeros = zeros.cuda()
+            inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
+            print(inputs.size())
+            targets = Variable(samples.data).contiguous().view((-1,))
+            #print(targets)
+            # calculate the reward
+            rewards = rollout.get_reward(samples, 16, discriminator)
+            rewards = Variable(torch.Tensor(rewards))
+            if opt.cuda:
+                rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
+            prob = generator.forward(inputs)
+            print(prob.size())
 
-            if GRADIENT_ESTIMATOR == 'RELAX':
-                prob = Variable(torch.zeros((BATCH_SIZE*g_sequence_len, VOCAB_SIZE)))
-                if opt.cuda:
-                    prob = prob.cuda()
-                for n in range(n_samples):
-                    samples = generator.sample(BATCH_SIZE, g_sequence_len)
-                    # construct the input to the generator, add zeros before samples and delete the last column
-                    zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
-                    if samples.is_cuda:
-                        zeros = zeros.cuda()
-                    inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
-                    prob += generator.forward(inputs)
-                prob /= n_samples
-                # 3.a
-                theta_prime = g_output_prob(prob, BATCH_SIZE, g_sequence_len)
-                # 3.b
-                z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
-                # 3.c
-                value, b = torch.max(z, 0)
-                # 3.d
-                z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
+            # 3.a
+            theta_prime = g_output_prob(prob)
 
-                # 3.e and f
-                c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, theta_prime, discriminator)
-                print(c_phi_z, c_phi_z_tilde)
+            # 3.b
+            z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
+            print(z.size())
 
+            # 3.c
+            value, b = torch.max(z, 0)
+
+            # 3.d
+            z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
+            print(z_tilde.size())
+
+            # 3.e and f
+            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat,theta_prime,discriminator) 
+
+            # 3.g new gradient loss for relax 
+            loss = gen_gan_loss(prob, targets, rewards,c_phi_hat,discriminator)
+            gen_gan_optm.zero_grad()
+            loss.backward()
+            gen_gan_optm.step()
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
