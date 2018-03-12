@@ -160,7 +160,7 @@ class GANLoss(nn.Module):
     def __init__(self):
         super(GANLoss, self).__init__()
 
-    '''def forward(self, prob, target, reward):
+    def forward_reinforce(self, prob, target, reward):
         """
         Args:
             prob: (N, C), torch Variable 
@@ -180,7 +180,7 @@ class GANLoss(nn.Module):
         loss = torch.masked_select(prob, one_hot)
         loss = loss * reward
         loss =  -torch.sum(loss)
-        return loss'''
+        return loss
     
     def forward(self,prob,target,reward,c_phi_hat,discriminator):
         """
@@ -200,6 +200,8 @@ class GANLoss(nn.Module):
             one_hot = one_hot.cuda()
         loss = torch.masked_select(prob, one_hot)
         c_phi_z,c_phi_z_tilde = c_phi_out(c_phi_hat,prob,discriminator)
+        c_phi_z_tilde = c_phi_z_tilde[:,1]
+        c_phi_z = c_phi_z[:,1]
         loss = loss*(reward-c_phi_z_tilde)+c_phi_z-c_phi_z_tilde
         loss =  -torch.sum(loss)
         return loss
@@ -307,9 +309,8 @@ def main():
 
             # 3.e and f
             c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat,theta_prime,discriminator) 
-            print(c_phi_z,c_phi_z_tilde)      
 
-            #3.g
+            # 3.g new gradient loss for relax 
             loss = gen_gan_loss(prob, targets, rewards,c_phi_hat,discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()

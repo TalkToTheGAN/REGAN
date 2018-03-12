@@ -8,6 +8,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
+
+
+
 
 class AnnexNetwork(nn.Module):
     """A CNN for text classification
@@ -44,4 +48,5 @@ class AnnexNetwork(nn.Module):
     def init_parameters(self):
         for param in self.parameters():
             param.data.uniform_(-0.05, 0.05)
+
 
