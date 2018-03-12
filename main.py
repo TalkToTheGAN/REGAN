@@ -309,7 +309,7 @@ def main():
             c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat,theta_prime,discriminator) 
             print(c_phi_z,c_phi_z_tilde)      
 
-
+            #3.g
             loss = gen_gan_loss(prob, targets, rewards,c_phi_hat,discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()
