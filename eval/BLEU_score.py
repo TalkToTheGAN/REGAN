@@ -93,8 +93,8 @@ def BLEU_score(candidate, references, n):
         print(f"\n##### BLEU_score(candidate, references, n = {n} ##### ")
         print('-' * 25)
         print(f"Candidate sentence:   \t{candidate}")
-        print(f"Handsard ref sentence:\t{references[0]}")
-        if hasMultipleReferences: print(f"Google ref sentence:  \t{references[1]}")
+        print(f"Ref1 sentence:\t{references[0]}")
+        if hasMultipleReferences: print(f"Ref2 sentence:  \t{references[1]}")
         print('-' * 25)
 
     bleu_score = 0.0
