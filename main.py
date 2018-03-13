@@ -42,7 +42,7 @@ VOCAB_SIZE = 5000
 # pre-training
 PRE_EPOCH_GEN = 1
 PRE_EPOCH_DIS = 1
-PRE_ITER_DIS = 3
+PRE_ITER_DIS = 1
 # adversarial training
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 2
@@ -145,6 +145,15 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
     return z_tilde
 
+# when you have sequences as probability distributions, re-puts them into sequences by doing argmax
+def prob_to_seq(x):
+    x_refactor = Variable(torch.zeros(x.size(0), x.size(1)))
+    if opt.cuda:
+        x_refactor = x_refactor.cuda()
+    for i in range(x.size(1)):
+        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+    return x_refactor
+
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
 def c_phi_out(c_phi_hat,theta_prime,discriminator):
     z = gumbel_softmax(theta_prime,VOCAB_SIZE,opt.cuda)
@@ -152,6 +161,19 @@ def c_phi_out(c_phi_hat,theta_prime,discriminator):
     z_tilde = categorical_re_param(theta_prime,VOCAB_SIZE,b,opt.cuda)
     z_gs = gumbel_softmax(z,VOCAB_SIZE,opt.cuda)
     z_tilde_gs = gumbel_softmax(z_tilde,VOCAB_SIZE,opt.cuda)
+    # reshaping the inputs of the discriminator
+    z_gs = z_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    z_gs = prob_to_seq(z_gs)
+    z_gs = z_gs.type(torch.LongTensor)
+    if opt.cuda:
+        z_gs = z_gs.cuda()
+    z_tilde_gs = z_tilde_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    z_tilde_gs = prob_to_seq(z_tilde_gs)
+    z_tilde_gs = z_tilde_gs.type(torch.LongTensor)
+    if opt.cuda:
+        z_tilde_gs = z_tilde_gs.cuda()
+    
+    #return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
     return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
 
 
@@ -199,13 +221,14 @@ class GANLoss(nn.Module):
         if prob.is_cuda:
             one_hot = one_hot.cuda()
         loss = torch.masked_select(prob, one_hot)
+        loss = loss.view(BATCH_SIZE, g_sequence_len)
+        loss = torch.mean(loss, 1)
         c_phi_z,c_phi_z_tilde = c_phi_out(c_phi_hat,prob,discriminator)
         c_phi_z_tilde = c_phi_z_tilde[:,1]
         c_phi_z = c_phi_z[:,1]
         loss = loss*(reward-c_phi_z_tilde)+c_phi_z-c_phi_z_tilde
         loss =  -torch.sum(loss)
         return loss
-
 
 
 def main():
@@ -276,42 +299,43 @@ def main():
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
-            print(samples.size())
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
-            print(inputs.size())
             targets = Variable(samples.data).contiguous().view((-1,))
-            #print(targets)
+            print(targets)
             # calculate the reward
             rewards = rollout.get_reward(samples, 16, discriminator)
+            #print(rewards)
             rewards = Variable(torch.Tensor(rewards))
             if opt.cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
-            print(prob.size())
+            #print(prob)
 
             # 3.a
             theta_prime = g_output_prob(prob)
+            #print(theta_prime)
 
             # 3.b
             z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
-            print(z.size())
+            #print(z)
 
             # 3.c
             value, b = torch.max(z, 0)
 
             # 3.d
             z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
-            print(z_tilde.size())
+            #print(z_tilde)
 
             # 3.e and f
-            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat,theta_prime,discriminator) 
+            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat ,theta_prime, discriminator)
+            #print(c_phi_z) 
 
             # 3.g new gradient loss for relax 
-            loss = gen_gan_loss(prob, targets, rewards,c_phi_hat,discriminator)
+            loss = gen_gan_loss(prob, targets, rewards, c_phi_hat, discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()
             gen_gan_optm.step()
