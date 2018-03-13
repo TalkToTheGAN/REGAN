@@ -16,6 +16,7 @@ from torch.autograd import Variable
 
 from generator import Generator
 from discriminator import Discriminator
+from annex_network import AnnexNetwork
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -31,7 +32,7 @@ print(opt)
 # general
 THC_CACHING_ALLOCATOR=0
 SEED = 88
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'real.data'
@@ -41,7 +42,7 @@ VOCAB_SIZE = 5000
 # pre-training
 PRE_EPOCH_GEN = 1
 PRE_EPOCH_DIS = 1
-PRE_ITER_DIS = 3
+PRE_ITER_DIS = 1
 # adversarial training
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 2
@@ -66,6 +67,9 @@ d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
 d_dropout = 0.75
 d_num_class = 2
 
+# Annex network parameters
+c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_num_filters = [12, 25, 25, 12, 12, 20]
 
 
 def generate_samples(model, batch_size, generated_num, output_file):
@@ -77,6 +81,7 @@ def generate_samples(model, batch_size, generated_num, output_file):
         for sample in samples:
             string = ' '.join([str(s) for s in sample])
             fout.write('%s\n' % string)
+
 
 def train_epoch(model, data_iter, criterion, optimizer):
     total_loss = 0.
@@ -115,12 +120,69 @@ def eval_epoch(model, data_iter, criterion):
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
+# New functions/classes
+
+# return probability distribution (in [0,1]) at the output of G
+def g_output_prob(prob):
+    softmax = nn.Softmax(dim=0)
+    theta_prime = softmax(prob)
+    return theta_prime
+
+# performs a Gumbel-Softmax reparameterization of the input
+def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
+    u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
+    if cuda:
+        u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
+    z = torch.log(theta_prime) - u
+    return z
+
+# categorical re-sampling exactly as in Backpropagating through the void - Appendix B
+def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
+    v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
+    if cuda:
+        v = v.cuda()
+    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
+    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
+    return z_tilde
+
+# when you have sequences as probability distributions, re-puts them into sequences by doing argmax
+def prob_to_seq(x):
+    x_refactor = Variable(torch.zeros(x.size(0), x.size(1)))
+    if opt.cuda:
+        x_refactor = x_refactor.cuda()
+    for i in range(x.size(1)):
+        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+    return x_refactor
+
+#3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
+def c_phi_out(c_phi_hat,theta_prime,discriminator):
+    z = gumbel_softmax(theta_prime,VOCAB_SIZE,opt.cuda)
+    value, b = torch.max(z,0)
+    z_tilde = categorical_re_param(theta_prime,VOCAB_SIZE,b,opt.cuda)
+    z_gs = gumbel_softmax(z,VOCAB_SIZE,opt.cuda)
+    z_tilde_gs = gumbel_softmax(z_tilde,VOCAB_SIZE,opt.cuda)
+    # reshaping the inputs of the discriminator
+    z_gs = z_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    z_gs = prob_to_seq(z_gs)
+    z_gs = z_gs.type(torch.LongTensor)
+    if opt.cuda:
+        z_gs = z_gs.cuda()
+    z_tilde_gs = z_tilde_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    z_tilde_gs = prob_to_seq(z_tilde_gs)
+    z_tilde_gs = z_tilde_gs.type(torch.LongTensor)
+    if opt.cuda:
+        z_tilde_gs = z_tilde_gs.cuda()
+    
+    #return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
+    return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
+
+
 class GANLoss(nn.Module):
     """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
     def __init__(self):
         super(GANLoss, self).__init__()
 
-    def forward(self, prob, target, reward):
+    def forward_reinforce(self, prob, target, reward):
         """
         Args:
             prob: (N, C), torch Variable 
@@ -141,33 +203,52 @@ class GANLoss(nn.Module):
         loss = loss * reward
         loss =  -torch.sum(loss)
         return loss
+    
+    def forward(self,prob,target,reward,c_phi_hat,discriminator):
+        """
+        Args:
+            prob: (N, C), torch Variable 
+            target : (N, ), torch Variable
+        """
+        N = target.size(0)
+        C = prob.size(1)
+        one_hot = torch.zeros((N, C))
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        one_hot.scatter_(1, target.data.view((-1,1)), 1)
+        one_hot = one_hot.type(torch.ByteTensor)
+        one_hot = Variable(one_hot)
+        if prob.is_cuda:
+            one_hot = one_hot.cuda()
+        loss = torch.masked_select(prob, one_hot)
+        loss = loss.view(BATCH_SIZE, g_sequence_len)
+        loss = torch.mean(loss, 1)
+        c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, prob,discriminator)
+        c_phi_z_tilde = c_phi_z_tilde[:,1]
+        c_phi_z = c_phi_z[:,1]
+        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+        loss =  - torch.sum(loss)
+        return loss
 
-# New functions/classes
+    def new_forward(self, prob, samples, reward, c_phi_hat, discriminator):
+        """
+        Args:
 
-# return probability distribution (in [0,1]) at the output of G
-def g_output_prob(prob, BATCH_SIZE, g_sequence_len):
-    softmax = nn.Softmax(dim=1)
-    theta_prime = softmax(prob)
-    theta_prime = torch.sum(theta_prime, dim=0).view((-1,))/(BATCH_SIZE*g_sequence_len)
-    return theta_prime
-
-# performs a Gumbel-Softmax reparameterization of the input
-def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
-    u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
-    if cuda:
-        u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
-    z = torch.log(theta_prime) - u
-    return z
-
-# categorical re-sampling exactly as in Backpropagating through the void - Appendix B
-def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
-    v = Variable(torch.rand(VOCAB_SIZE))
-    if cuda:
-        v = Variable(torch.rand(VOCAB_SIZE)).cuda()
-    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[b]))
-    z_tilde[b] = -torch.log(-torch.log(v[b]))
-    return z_tilde
-
+        """
+        prob_temp = prob.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+        new_prob = Variable(torch.zeros(BATCH_SIZE, g_sequence_len))
+        if opt.cuda:
+            new_prob = new_prob.cuda()
+        for i in range(BATCH_SIZE):
+            for j in range(g_sequence_len):
+                new_prob[i,j] = prob_temp[i,j,int(samples[i,j])]
+        loss = torch.sum(new_prob, 1)
+        c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, prob, discriminator)
+        c_phi_z_tilde = c_phi_z_tilde[:,1]
+        c_phi_z = c_phi_z[:,1]
+        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+        loss =  - torch.sum(loss)
+        return loss
 
 def main():
     random.seed(SEED)
@@ -176,10 +257,12 @@ def main():
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, opt.cuda)
     if opt.cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
+        c_phi_hat = c_phi_hat.cuda()
         target_lstm = target_lstm.cuda()
 
     # Generate toy data using target lstm
@@ -241,16 +324,19 @@ def main():
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
             targets = Variable(samples.data).contiguous().view((-1,))
-            #print(targets)
+            print(targets)
             # calculate the reward
             rewards = rollout.get_reward(samples, 16, discriminator)
+            #print(rewards)
             rewards = Variable(torch.Tensor(rewards))
             if opt.cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
+            print(prob)
 
             # 3.a
-            theta_prime = g_output_prob(prob, BATCH_SIZE, g_sequence_len)
+            theta_prime = g_output_prob(prob)
+            #print(theta_prime)
 
             # 3.b
             z = gumbel_softmax(theta_prime, VOCAB_SIZE, opt.cuda)
@@ -263,7 +349,12 @@ def main():
             z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, opt.cuda)
             #print(z_tilde)
 
-            loss = gen_gan_loss(prob, targets, rewards)
+            # 3.e and f
+            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat ,theta_prime, discriminator)
+            #print(c_phi_z) 
+
+            # 3.g new gradient loss for relax 
+            loss = gen_gan_loss.new_forward(prob, samples, rewards, c_phi_hat, discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()
             gen_gan_optm.step()
