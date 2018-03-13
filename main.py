@@ -223,13 +223,32 @@ class GANLoss(nn.Module):
         loss = torch.masked_select(prob, one_hot)
         loss = loss.view(BATCH_SIZE, g_sequence_len)
         loss = torch.mean(loss, 1)
-        c_phi_z,c_phi_z_tilde = c_phi_out(c_phi_hat,prob,discriminator)
+        c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, prob,discriminator)
         c_phi_z_tilde = c_phi_z_tilde[:,1]
         c_phi_z = c_phi_z[:,1]
-        loss = loss*(reward-c_phi_z_tilde)+c_phi_z-c_phi_z_tilde
-        loss =  -torch.sum(loss)
+        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+        loss =  - torch.sum(loss)
         return loss
 
+    def new_forward(self, prob, samples, reward, c_phi_hat, discriminator):
+        """
+        Args:
+
+        """
+        prob_temp = prob.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+        new_prob = Variable(torch.zeros(BATCH_SIZE, g_sequence_len))
+        if opt.cuda:
+            new_prob = new_prob.cuda()
+        for i in range(BATCH_SIZE):
+            for j in range(g_sequence_len):
+                new_prob[i,j] = prob_temp[i,j,int(samples[i,j])]
+        loss = torch.sum(new_prob, 1)
+        c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat, prob, discriminator)
+        c_phi_z_tilde = c_phi_z_tilde[:,1]
+        c_phi_z = c_phi_z[:,1]
+        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+        loss =  - torch.sum(loss)
+        return loss
 
 def main():
     random.seed(SEED)
@@ -313,7 +332,7 @@ def main():
             if opt.cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
             prob = generator.forward(inputs)
-            #print(prob)
+            print(prob)
 
             # 3.a
             theta_prime = g_output_prob(prob)
@@ -335,7 +354,7 @@ def main():
             #print(c_phi_z) 
 
             # 3.g new gradient loss for relax 
-            loss = gen_gan_loss(prob, targets, rewards, c_phi_hat, discriminator)
+            loss = gen_gan_loss.new_forward(prob, samples, rewards, c_phi_hat, discriminator)
             gen_gan_optm.zero_grad()
             loss.backward()
             gen_gan_optm.step()
