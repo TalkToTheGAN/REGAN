@@ -76,3 +76,5 @@ class Rollout(object):
                 param.data = dic[name]
             else:
                 param.data = self.update_rate * param.data + (1 - self.update_rate) * dic[name]
+
+
