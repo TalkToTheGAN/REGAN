@@ -176,9 +176,8 @@ def main(opt):
             # 3.j
             grads[-1].volatile = False
             var_loss = c_phi_hat_loss.forward(grads[-1], cuda)
+            var_loss.requires_grad = True
             c_phi_hat_optm.zero_grad()
-            for param in c_phi_hat.parameters():
-                print(param.requires_grad)
             var_loss.backward()
             c_phi_hat_optm.step()
 
