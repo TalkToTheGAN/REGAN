@@ -118,6 +118,7 @@ def main(opt):
     rollout = Rollout(generator, UPDATE_RATE)
     print('#####################################################')
     print('Start Adeversatial Training...\n')
+    
     gen_gan_loss = GANLoss()
     gen_gan_optm = optim.Adam(generator.parameters())
     if cuda:
@@ -125,10 +126,17 @@ def main(opt):
     gen_criterion = nn.NLLLoss(size_average=False)
     if cuda:
         gen_criterion = gen_criterion.cuda()
+    
     dis_criterion = nn.NLLLoss(size_average=False)
     dis_optimizer = optim.Adam(discriminator.parameters())
     if cuda:
         dis_criterion = dis_criterion.cuda()
+    
+    c_phi_hat_loss = VarianceLoss()
+    if cuda:
+        c_phi_hat_loss = c_phi_hat_loss.cuda()
+    c_phi_hat_optm = optim.Adam(c_phi_hat.parameters())
+    
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
         for it in range(G_STEPS):
@@ -157,10 +165,22 @@ def main(opt):
             c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat ,theta_prime, discriminator, cuda)
             # 3.g new gradient loss for relax 
             loss = gen_gan_loss.forward(prob, samples, rewards, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            #print(loss)
+            # 3.i
+            grads = torch.autograd.grad(loss, generator.parameters(), retain_graph=True)
             # 3.h optimization step
             gen_gan_optm.zero_grad()
             loss.backward()
             gen_gan_optm.step()
+            gen_gan_optm.zero_grad()
+            # 3.j
+            grads[-1].volatile = False
+            var_loss = c_phi_hat_loss.forward(grads[-1], cuda)
+            c_phi_hat_optm.zero_grad()
+            for param in c_phi_hat.parameters():
+                print(param.requires_grad)
+            var_loss.backward()
+            c_phi_hat_optm.step()
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)

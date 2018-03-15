@@ -115,3 +115,11 @@ class GANLoss(nn.Module):
         return loss
 
 
+class VarianceLoss(nn.Module):
+    """Loss for the control variate annex network"""
+    def __init__(self):
+        super(VarianceLoss, self).__init__()
+
+    def forward(self, grad, cuda = False):
+        return torch.sum(grad**2)
+
