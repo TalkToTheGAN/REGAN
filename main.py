@@ -44,6 +44,7 @@ PRE_EPOCH_GEN = 1
 PRE_EPOCH_DIS = 1
 PRE_ITER_DIS = 1
 # adversarial training
+GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 2
 G_STEPS = 1
@@ -155,17 +156,10 @@ def main(opt):
             prob = generator.forward(inputs)
             # 3.a
             theta_prime = g_output_prob(prob)
-            # 3.b
-            z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
-            # 3.c
-            value, b = torch.max(z, 0)
-            # 3.d
-            z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
             # 3.e and f
-            c_phi_z, c_phi_z_tilde = c_phi_out(c_phi_hat ,theta_prime, discriminator, cuda)
+            c_phi_z, c_phi_z_tilde = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
             # 3.g new gradient loss for relax 
-            loss = gen_gan_loss.forward(prob, samples, rewards, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-            #print(loss)
+            loss = gen_gan_loss.forward(GD, prob, samples, rewards, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
             # 3.i
             grads = torch.autograd.grad(loss, generator.parameters(), retain_graph=True)
             # 3.h optimization step
@@ -180,19 +174,20 @@ def main(opt):
             c_phi_hat_optm.zero_grad()
             var_loss.backward()
             c_phi_hat_optm.step()
+            print('Batch estimate of the variance of the gradient at step {}: {}'.format(it, var_loss.data[0]))
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
             eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
             loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-            print('Batch [%d] True Loss: %f' % (total_batch, loss))
-        rollout.update_params()
+            print('Batch [%d] True Generator Loss: %f' % (total_batch, loss))
         
-        for _ in range(D_STEPS):
+        for a in range(D_STEPS):
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
-            for _ in range(D_EPOCHS):
+            for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
+                print('Batch Discriminator Loss at step {} and epoch {}: {}'.format(a, b, loss))
 
 if __name__ == '__main__':
 

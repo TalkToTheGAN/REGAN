@@ -70,7 +70,7 @@ class GANLoss(nn.Module):
         loss =  -torch.sum(loss)
         return loss
     
-    def old_forward(self, prob, target, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, cuda=False):
+    def old_forward(self, GD, prob, target, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, cuda=False):
         """
         Forward function with implementation based on the original one.
         """
@@ -87,14 +87,14 @@ class GANLoss(nn.Module):
         loss = torch.masked_select(prob, one_hot)
         loss = loss.view(BATCH_SIZE, g_sequence_len)
         loss = torch.mean(loss, 1)
-        c_phi_z, c_phi_z_tilde = utils.c_phi_out(c_phi_hat, prob, discriminator, cuda)
+        c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
         c_phi_z_tilde = c_phi_z_tilde[:,1]
         c_phi_z = c_phi_z[:,1]
         loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
         loss =  - torch.sum(loss)
         return loss
 
-    def forward(self, prob, samples, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+    def forward(self, GD, prob, samples, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
         """
         Computes the Generator's loss in RELAX optimization setting. 
 
@@ -107,7 +107,7 @@ class GANLoss(nn.Module):
             for j in range(g_sequence_len):
                 new_prob[i,j] = prob_temp[i,j,int(samples[i,j])]
         loss = torch.sum(new_prob, 1)
-        c_phi_z, c_phi_z_tilde = utils.c_phi_out(c_phi_hat, prob, discriminator, cuda)
+        c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
         c_phi_z_tilde = c_phi_z_tilde[:,1]
         c_phi_z = c_phi_z[:,1]
         loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
