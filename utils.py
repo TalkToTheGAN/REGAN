@@ -109,9 +109,12 @@ def prob_to_seq(x, cuda=False):
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
-def c_phi_out(c_phi_hat, theta_prime, discriminator, cuda=False):
+def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
+    # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
+    # 3.c
     value, b = torch.max(z,0)
+    # 3.d
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
     z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
     z_tilde_gs = gumbel_softmax(z_tilde, VOCAB_SIZE, cuda)
@@ -126,6 +129,7 @@ def c_phi_out(c_phi_hat, theta_prime, discriminator, cuda=False):
     z_tilde_gs = z_tilde_gs.type(torch.LongTensor)
     if cuda:
         z_tilde_gs = z_tilde_gs.cuda()
-    
-    #return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
-    return c_phi_hat.forward(z)+discriminator.forward(z_gs),c_phi_hat.forward(z_tilde)+discriminator.forward(z_tilde_gs)
+    if GD == 'REBAR':
+        return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
+    if GD == 'RELAX':
+        return c_phi_hat.forward(z) + discriminator.forward(z_gs), c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
