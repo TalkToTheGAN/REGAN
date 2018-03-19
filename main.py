@@ -20,6 +20,7 @@ from annex_network import AnnexNetwork
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
+from data_loader import DataLoader
 
 from utils import *
 from loss import *
@@ -35,7 +36,7 @@ np.random.seed(SEED)
 BATCH_SIZE = 16
 GENERATED_NUM = 10000
 # related to data
-POSITIVE_FILE = 'real.data'
+POSITIVE_FILE = 'data/math_equation_data.txt'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
@@ -53,15 +54,15 @@ D_EPOCHS = 1
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 20
+g_sequence_len = 15
 # Discriminator Parameters
 d_emb_dim = 64
-d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
+d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11]
 d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
 d_dropout = 0.75
 d_num_class = 2
 # Annex network parameters
-c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_filter_sizes = [1, 3, 5, 7, 9, 11]
 c_num_filters = [12, 25, 25, 12, 12, 20]
 
 
@@ -83,10 +84,10 @@ def main(opt):
 
     # Generate toy data using target lstm
     print('Generating data ...')
-    generate_samples(target_lstm, BATCH_SIZE, GENERATED_NUM, POSITIVE_FILE)
+    #generate_samples(target_lstm, BATCH_SIZE, GENERATED_NUM, POSITIVE_FILE)
     
     # Load data from file
-    gen_data_iter = GenDataIter(POSITIVE_FILE, BATCH_SIZE)
+    gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
 
     # Pretrain Generator using MLE
     gen_criterion = nn.NLLLoss(size_average=False)
@@ -98,9 +99,9 @@ def main(opt):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-        eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
-        loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-        print('Epoch [%d] True Loss: %f' % (epoch, loss))
+        eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+        # loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
+        # print('Epoch [%d] True Loss: %f' % (epoch, loss))
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -118,7 +119,7 @@ def main(opt):
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
     print('#####################################################')
-    print('Start Adeversatial Training...\n')
+    print('Start Adversatial Training...\n')
     
     gen_gan_loss = GANLoss()
     gen_gan_optm = optim.Adam(generator.parameters())
@@ -178,9 +179,9 @@ def main(opt):
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-            eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
-            loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-            print('Batch [%d] True Generator Loss: %f' % (total_batch, loss))
+            eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+            # loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
+            # print('Batch [%d] True Generator Loss: %f' % (total_batch, loss))
         
         for a in range(D_STEPS):
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)

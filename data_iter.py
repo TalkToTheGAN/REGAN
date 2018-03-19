@@ -59,8 +59,8 @@ class DisDataIter(object):
     def __init__(self, real_data_file, fake_data_file, batch_size):
         super(DisDataIter, self).__init__()
         self.batch_size = batch_size
-        real_data_lis = self.read_file(real_data_file)
-        fake_data_lis = self.read_file(fake_data_file)
+        real_data_lis = self.read_real_file(real_data_file)
+        fake_data_lis = self.read_fake_file(fake_data_file)
         self.data = real_data_lis + fake_data_lis
         self.labels = [1 for _ in range(len(real_data_lis))] +\
                         [0 for _ in range(len(fake_data_lis))]
@@ -91,12 +91,32 @@ class DisDataIter(object):
         pairs = [self.pairs[i] for i in index]
         data = [p[0] for p in pairs]
         label = [p[1] for p in pairs]
-        data = torch.LongTensor(np.asarray(data, dtype='int64'))
-        label = torch.LongTensor(np.asarray(label, dtype='int64'))
+        #print(data)
+        data = torch.LongTensor(np.asarray(data[:-1], dtype='int64'))
+        label = torch.LongTensor(np.asarray(label[:-1], dtype='int64'))
         self.idx += self.batch_size
         return data, label
 
-    def read_file(self, data_file):
+    def read_real_file(self, data_file):
+        char_to_ix = {
+            'x': 0,
+            '+': 1,
+            '-': 2,
+            '*': 3,
+            '/': 4,
+            '_': 5,
+            # '\n': 6
+        }
+        with open(data_file, 'r') as f:
+            lines = f.readlines()
+        lis = []
+        for line in lines:
+            l = list(line)[:-1]
+            l = [char_to_ix[s] for s in l]
+            lis.append(l)
+        return lis
+
+    def read_fake_file(self, data_file):
         with open(data_file, 'r') as f:
             lines = f.readlines()
         lis = []
@@ -105,5 +125,3 @@ class DisDataIter(object):
             l = [int(s) for s in l]
             lis.append(l)
         return lis
-
-
