@@ -46,10 +46,10 @@ PRE_ITER_DIS = 1
 # adversarial training
 GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 2
+TOTAL_BATCH = 4
 G_STEPS = 1
-D_STEPS = 4
-D_EPOCHS = 2
+D_STEPS = 1
+D_EPOCHS = 1
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
