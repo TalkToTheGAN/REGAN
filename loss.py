@@ -114,6 +114,18 @@ class GANLoss(nn.Module):
         loss =  - torch.sum(loss)
         return loss
 
+    def forward_reward(self, i, samples, prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+        """
+        Computes the Generator's loss in RELAX optimization setting. 
+
+        """
+        conditional_proba = Variable(torch.zeros(BATCH_SIZE, VOCAB_SIZE))
+        if cuda:
+            conditional_proba = conditional_proba.cuda()
+        for j in range(BATCH_SIZE):
+            conditional_proba[j, i] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
+        return conditional_proba
 
 class VarianceLoss(nn.Module):
     """Loss for the control variate annex network"""
@@ -121,5 +133,10 @@ class VarianceLoss(nn.Module):
         super(VarianceLoss, self).__init__()
 
     def forward(self, grad, cuda = False):
-        return torch.sum(grad**2)
+        total_loss = Variable(torch.zeros(1), requires_grad=True)
+        if cuda:
+            total_loss = total_loss.cuda()
+        for i in range(len(grad)):
+            total_loss += torch.sum(grad[i]**2)
+        return total_loss
 

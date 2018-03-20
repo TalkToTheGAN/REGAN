@@ -142,6 +142,8 @@ def main(opt):
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
+            print(samples)
+            # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
@@ -153,25 +155,56 @@ def main(opt):
             rewards = Variable(torch.Tensor(rewards))
             if cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
+            # rewards has size (BS)
             prob = generator.forward(inputs)
+            # prob has size (BS*sequence_len, VOCAB_SIZE)
             # 3.a
             theta_prime = g_output_prob(prob)
+            # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
-            c_phi_z, c_phi_z_tilde = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
-            # 3.g new gradient loss for relax 
-            loss = gen_gan_loss.forward(GD, prob, samples, rewards, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
+            c_phi_z = torch.sum(c_phi_z_ori[:,1])
+            c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])
             # 3.i
-            grads = torch.autograd.grad(loss, generator.parameters(), retain_graph=True)
+            grads = []
             # 3.h optimization step
             gen_gan_optm.zero_grad()
-            loss.backward()
+            for i in range(g_sequence_len):
+                # 3.g new gradient loss for relax 
+                new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
+                # nw_prob has size (BS, g_sequence_len, VOCAB_SIZE)
+                cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+                c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+                cond_prob -= c_term
+                #print(cond_prob)
+                new_prob[:,i,:].backward(cond_prob)
+                # 3.i
+                partial_grads = []
+                for p in generator.parameters():
+                    partial_grads.append(p.grad)
+                grads.append(partial_grads)
+            # 3.h
+            c_phi_z.backward(retain_graph=True)
+            # 3.i
+            partial_grads = []
+            for p in generator.parameters():
+                partial_grads.append(p.grad)
+            grads.append(partial_grads)
+            # 3.h
+            c_phi_z_tilde.backward()
+            # 3.i
+            partial_grads = []
+            for p in generator.parameters():
+                partial_grads.append(p.grad)
+            grads.append(partial_grads)
+            # 3.h
             gen_gan_optm.step()
-            gen_gan_optm.zero_grad()
             # 3.j
-            grads[-1].volatile = False
-            var_loss = c_phi_hat_loss.forward(grads[-1], cuda)
-            var_loss.requires_grad = True
+            all_grads = [sum(x) for x in zip(*grads)]
+            for i in range(len(all_grads)):
+                all_grads[i].volatile = False
             c_phi_hat_optm.zero_grad()
+            var_loss = c_phi_hat_loss.forward(all_grads, cuda)
             var_loss.backward()
             c_phi_hat_optm.step()
             print('Batch estimate of the variance of the gradient at step {}: {}'.format(it, var_loss.data[0]))
