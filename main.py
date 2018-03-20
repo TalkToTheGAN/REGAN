@@ -46,7 +46,7 @@ PRE_ITER_DIS = 1
 # adversarial training
 GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 4
+TOTAL_BATCH = 100
 G_STEPS = 1
 D_STEPS = 1
 D_EPOCHS = 1
@@ -142,7 +142,6 @@ def main(opt):
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
-            print(samples)
             # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
@@ -168,6 +167,7 @@ def main(opt):
             # 3.i
             grads = []
             # 3.h optimization step
+            # first, empty the gradient buffers
             gen_gan_optm.zero_grad()
             for i in range(g_sequence_len):
                 # 3.g new gradient loss for relax 
@@ -181,7 +181,7 @@ def main(opt):
                 # 3.i
                 partial_grads = []
                 for p in generator.parameters():
-                    partial_grads.append(p.grad)
+                    partial_grads.append(p.grad/BATCH_SIZE)
                 grads.append(partial_grads)
             # 3.h
             c_phi_z.backward(retain_graph=True)

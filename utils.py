@@ -95,8 +95,6 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
         v = v.cuda()
-    print(v.size())
-    print(theta_prime.size())
     z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
     z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
     return z_tilde
