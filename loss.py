@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-
+import copy
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import numpy as np 
 
 import utils
 
@@ -127,16 +128,43 @@ class GANLoss(nn.Module):
             conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
         return conditional_proba
 
+    def forward_reward_grads(self, i, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+        """
+        Computes the Generator's loss in RELAX optimization setting. 
+
+        """
+        conditional_proba = Variable(torch.zeros(BATCH_SIZE, VOCAB_SIZE))
+        batch_i_grads = []
+        if cuda:
+            conditional_proba = conditional_proba.cuda()
+        for j in range(BATCH_SIZE):
+            print(j)
+            conditional_proba[j, i] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
+            g.zero_grad()
+            j_grads = []
+            prob[j,i,:].backward(conditional_proba[j,:])
+            for p in g.parameters():
+                j_grads.append(p.grad)
+            batch_i_grads.append(np.array(j_grads))
+        return conditional_proba, np.array(batch_i_grads)
+
 class VarianceLoss(nn.Module):
     """Loss for the control variate annex network"""
     def __init__(self):
         super(VarianceLoss, self).__init__()
 
     def forward(self, grad, cuda = False):
+        bs = len(grad)
         total_loss = Variable(torch.zeros(1), requires_grad=True)
         if cuda:
             total_loss = total_loss.cuda()
-        for i in range(len(grad)):
-            total_loss += torch.sum(grad[i]**2)
-        return total_loss
+        for j in range(bs):
+            batch_j_loss = Variable(torch.zeros(1), requires_grad=True)
+            if cuda:
+                batch_j_loss = total_loss.cuda()
+            for i in range(len(grad[j])):
+                batch_j_loss += torch.sum(grad[j][i]**2)
+            total_loss += batch_j_loss
+        return total_loss/bs
 

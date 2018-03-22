@@ -133,3 +133,13 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
         return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
     if GD == 'RELAX':
         return c_phi_hat.forward(z) + discriminator.forward(z_gs), c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+
+# get the number of parameters of a neural network
+def get_n_params(model):
+    pp=0
+    for p in list(model.parameters()):
+        nn=1
+        for s in list(p.size()):
+            nn = nn*s
+        pp += nn
+    return pp
