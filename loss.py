@@ -124,30 +124,32 @@ class GANLoss(nn.Module):
         if cuda:
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
-            conditional_proba[j, i] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
             conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
         return conditional_proba
 
-    def forward_reward_grads(self, i, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+    def forward_reward_grads(self, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
         """
         Computes the Generator's loss in RELAX optimization setting. 
 
         """
-        conditional_proba = Variable(torch.zeros(BATCH_SIZE, VOCAB_SIZE))
-        batch_i_grads = []
+        conditional_proba = Variable(torch.zeros(BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
+        batch_grads = []
         if cuda:
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
+            for i in range(g_sequence_len):
+                conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, :, :] = rewards[j] * conditional_proba[j, :, :]
+        for j in range(BATCH_SIZE):
             print(j)
-            conditional_proba[j, i] = prob[j, i, int(samples[j, i])]
-            conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
-            g.zero_grad()
             j_grads = []
-            prob[j,i,:].backward(conditional_proba[j,:])
+            g.zero_grad()
+            prob[j, :, :].backward(conditional_proba[j, :, :])
             for p in g.parameters():
                 j_grads.append(p.grad)
-            batch_i_grads.append(np.array(j_grads))
-        return conditional_proba, np.array(batch_i_grads)
+            batch_grads.append(j_grads)
+        return batch_grads
 
 class VarianceLoss(nn.Module):
     """Loss for the control variate annex network"""
@@ -164,7 +166,7 @@ class VarianceLoss(nn.Module):
             if cuda:
                 batch_j_loss = total_loss.cuda()
             for i in range(len(grad[j])):
-                batch_j_loss += torch.sum(grad[j][i]**2)
-            total_loss += batch_j_loss
+                batch_j_loss = torch.add(batch_j_loss, torch.sum(grad[j][i]**2))
+            total_loss = torch.add(total_loss, batch_j_loss)
         return total_loss/bs
 

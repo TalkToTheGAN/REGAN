@@ -112,9 +112,11 @@ def prob_to_seq(x, cuda=False):
 def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
+    print(z)
     # 3.c
     value, b = torch.max(z,0)
     # 3.d
+    print(b)
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
     z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
     z_tilde_gs = gumbel_softmax(z_tilde, VOCAB_SIZE, cuda)

@@ -21,7 +21,7 @@ class Rollout(object):
         self.own_model = copy.deepcopy(model)
         self.update_rate = update_rate
 
-    def get_reward(self, x, num, discriminator):
+    def get_reward(self, x, discriminator):
         """
         Args:
             x : (batch_size, seq_len) input data
