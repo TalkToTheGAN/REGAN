@@ -141,11 +141,12 @@ class GANLoss(nn.Module):
             for i in range(g_sequence_len):
                 conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
             conditional_proba[j, :, :] = rewards[j] * conditional_proba[j, :, :]
+        last_idx = BATCH_SIZE-1
         for j in range(BATCH_SIZE):
             print(j)
             j_grads = []
             g.zero_grad()
-            prob[j, :, :].backward(conditional_proba[j, :, :])
+            prob[j, :, :].backward(conditional_proba[j, :, :], retain_graph=True)
             for p in g.parameters():
                 j_grads.append(p.grad)
             batch_grads.append(j_grads)

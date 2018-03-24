@@ -199,7 +199,8 @@ def main(opt):
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 cond_prob -= c_term
-                new_prob[:,i,:].backward(cond_prob)
+                # new_prob[:,i,:].backward(cond_prob)
+                new_prob[:, i, :].backward(cond_prob, retain_graph=True)
             # 3.h 
             c_phi_z.backward(retain_graph=True)
             c_phi_z_tilde.backward(retain_graph=True)
