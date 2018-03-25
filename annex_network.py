@@ -36,6 +36,7 @@ class AnnexNetwork(nn.Module):
         Args:
             x: (batch_size*g_sequence_len, vocab_size)
         """
+        x=x.cuda()
         emb = x.view(self.batch_size, 1, self.g_sequence_len, self.vocab_size) # batch_size * 1 * seq_len * vocab_size
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs]  # [batch_size * num_filter * length]
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]
@@ -43,6 +44,7 @@ class AnnexNetwork(nn.Module):
         highway = self.highway(pred)
         pred = F.sigmoid(highway) *  F.relu(highway) + (1. - F.sigmoid(highway)) * pred
         pred = self.softmax(self.lin(self.dropout(pred)))
+
         return pred
 
     def init_parameters(self):

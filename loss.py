@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np 
-from tqdm import tqdm
 
 import utils
 
@@ -144,6 +143,7 @@ class GANLoss(nn.Module):
             conditional_proba[j, :, :] = rewards[j] * conditional_proba[j, :, :]
         last_idx = BATCH_SIZE-1
         for j in range(BATCH_SIZE):
+            print(j)
             j_grads = []
             g.zero_grad()
             prob[j, :, :].backward(conditional_proba[j, :, :], retain_graph=True)

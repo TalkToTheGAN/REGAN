@@ -93,10 +93,20 @@ def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
 # categorical re-sampling exactly as in Backpropagating through the void - Appendix B
 def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
+    z_tilde = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
         v = v.cuda()
-    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
-    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
+    '''z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
+    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))'''
+    #naive implementation
+    for i in range(theta_prime.size(0)):
+        v_b = v[i,int(b[i])]
+        z_tilde[i,:] = -torch.log((-torch.log(v[i,:])/theta_prime[i,:]) - torch.log(v_b))
+        z_tilde[i,int(b[i])]=-torch.log(-torch.log(v[i,int(b[i])]))
+    if cuda:
+        z_tilde.cuda()
+
+   
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
@@ -113,7 +123,7 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
     # 3.c
-    value, b = torch.max(z,0)
+    value, b = torch.max(torch.transpose(z,0,1),0)
     # 3.d
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
     z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
@@ -132,7 +142,12 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     if GD == 'REBAR':
         return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
     if GD == 'RELAX':
-        return c_phi_hat.forward(z) + discriminator.forward(z_gs), c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
+        c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        if cuda:
+            c1=c1.cuda()
+            c2=c2.cuda()
+    return c1,c2
 
 # get the number of parameters of a neural network
 def get_n_params(model):
