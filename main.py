@@ -25,6 +25,8 @@ from utils import *
 from loss import *
 
 
+isDebug = True
+
 # ================== Parameter Definition =================
 
 # Basic Training Parameters
@@ -40,16 +42,16 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 5000
 # pre-training
-PRE_EPOCH_GEN = 1 # default is 120
-PRE_EPOCH_DIS = 1 # default is 5
-PRE_ITER_DIS = 1 # default is 3
+PRE_EPOCH_GEN = 1 if isDebug else 120
+PRE_EPOCH_DIS = 1 if isDebug else 5
+PRE_ITER_DIS = 1 if isDebug else 3
 # adversarial training
 GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 100
-G_STEPS = 1 # default is 1
-D_STEPS = 4 # default is 4
-D_EPOCHS = 2 # default is 2
+G_STEPS = 1 if isDebug else 1
+D_STEPS = 4 if isDebug else 4
+D_EPOCHS = 2 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
@@ -70,8 +72,8 @@ c_num_filters = [12, 25]
 
 def main(opt):
 
-    cuda = opt.cuda
-    print(cuda)
+    cuda = opt.cuda; visualize = opt.visualize
+    print(f"cuda = {cuda}, visualize = {opt.visualize}")
 
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
@@ -114,7 +116,7 @@ def main(opt):
     dis_optimizer = optim.Adam(discriminator.parameters())
     if opt.cuda:
         dis_criterion = dis_criterion.cuda()
-    print('Pretrain Dsicriminator ...')
+    print('Pretrain Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
@@ -253,9 +255,23 @@ def main(opt):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Training Parameter')
+    parser.add_argument('--visualize', action='store_true', help='Enables Visdom')
     parser.add_argument('--cuda', action='store', default=None, type=int)
     opt = parser.parse_args()
     if opt.cuda is not None and opt.cuda >= 0:
         torch.cuda.set_device(opt.cuda)
         opt.cuda = True if torch.cuda.is_available() else False
+
+    try:
+        from eval.helper import *
+        from eval.BLEU_score import *
+        import torchnet as tnt
+        from torchnet.engine import Engine
+        from torchnet.logger import VisdomPlotLogger, VisdomLogger
+        canVisualize = True
+    except ImportError as ie:
+        eprint("Could not import vizualization imports. ")
+        canVisualize = False
+
+    opt.visualize = True if (opt.visualize and canVisualize) else False
     main(opt)
