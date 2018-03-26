@@ -50,8 +50,8 @@ GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 100
 G_STEPS = 1 if isDebug else 1
-D_STEPS = 4 if isDebug else 4
-D_EPOCHS = 2 if isDebug else 2
+D_STEPS = 1 if isDebug else 4
+D_EPOCHS = 1 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
@@ -157,7 +157,6 @@ def main(opt):
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
-            
             targets = Variable(samples.data).contiguous().view((-1,))
             if opt.cuda:
                 inputs=inputs.cuda()
@@ -198,8 +197,6 @@ def main(opt):
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
                     batch_grads[i][j] += batch_i_grads_2[i][j]
-            #print(len(batch_grads))
-            #print(batch_grads)
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
             # For loop that computes gradients to update G
@@ -209,7 +206,6 @@ def main(opt):
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 cond_prob -= c_term
-                # new_prob[:,i,:].backward(cond_prob)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
             # 3.h 
             c_phi_z.backward(retain_graph=True)
@@ -225,7 +221,6 @@ def main(opt):
                 for p in generator.parameters():
                     j_grads.append(p.grad)
                 partial_grads.append(j_grads)
-            #print(partial_grads)
             grads.append(partial_grads)
             # c_phi_z_tilde term
             partial_grads = []
@@ -236,11 +231,7 @@ def main(opt):
                 for p in generator.parameters():
                     j_grads.append(p.grad)
                 partial_grads.append(j_grads)
-            #print(partial_grads)
             grads.append(partial_grads)
-            #print(len(grads))
-            #print(len(grads[0]))
-            #print(grads[0])
             # grads should be of length 3
             # grads[0] should be of length BATCH SIZE
             # 3.j
@@ -248,16 +239,12 @@ def main(opt):
             for i in range(len(grads[0])):
                 for j in range(len(grads[0][i])):
                     all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
-                    #if total_batch == 0:
-                        #all_grads[i][j].volatile = False
-            #print(all_grads)
-            #print(len(all_grads))
             # all_grads should be of length BATCH_SIZE
             c_phi_hat_optm.zero_grad()
             var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
             var_loss.backward()
             c_phi_hat_optm.step()
-            print('Batch estimate of the variance of the gradient at step {}: {}'.format(it, var_loss.data[0]))
+            print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
@@ -270,7 +257,7 @@ def main(opt):
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
-                print('Batch Discriminator Loss at step {} and epoch {}: {}'.format(a, b, loss))
+                print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
 
 if __name__ == '__main__':
 
