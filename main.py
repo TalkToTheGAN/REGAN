@@ -40,7 +40,7 @@ GENERATED_NUM = 10000
 POSITIVE_FILE = 'real.data'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 5000
+VOCAB_SIZE = 10
 # pre-training
 PRE_EPOCH_GEN = 1 if isDebug else 120
 PRE_EPOCH_DIS = 1 if isDebug else 5
@@ -55,7 +55,7 @@ D_EPOCHS = 2 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 20
+g_sequence_len = 4
 # Discriminator Parameters
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
@@ -84,7 +84,7 @@ def main(opt):
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
-    if opt.cuda:
+    if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         c_phi_hat = c_phi_hat.cuda()
@@ -157,7 +157,11 @@ def main(opt):
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
+            
             targets = Variable(samples.data).contiguous().view((-1,))
+            if opt.cuda:
+                inputs=inputs.cuda()
+                targets=targets.cuda()
             # calculate the reward
             rewards = rollout.get_reward(samples, discriminator)
             rewards = Variable(torch.Tensor(rewards))
@@ -173,6 +177,10 @@ def main(opt):
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])
+            if opt.cuda:
+                c_phi_z = c_phi_z.cuda()
+                c_phi_z_tilde = c_phi_z_tilde.cuda()
+                c_phi_hat=c_phi_hat.cuda()
             # 3.i
             grads = []
             first_term_grads = []
@@ -190,6 +198,8 @@ def main(opt):
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
                     batch_grads[i][j] += batch_i_grads_2[i][j]
+            #print(len(batch_grads))
+            #print(batch_grads)
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
             # For loop that computes gradients to update G
@@ -199,6 +209,7 @@ def main(opt):
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 cond_prob -= c_term
+                # new_prob[:,i,:].backward(cond_prob)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
             # 3.h 
             c_phi_z.backward(retain_graph=True)
@@ -214,6 +225,7 @@ def main(opt):
                 for p in generator.parameters():
                     j_grads.append(p.grad)
                 partial_grads.append(j_grads)
+            #print(partial_grads)
             grads.append(partial_grads)
             # c_phi_z_tilde term
             partial_grads = []
@@ -224,7 +236,11 @@ def main(opt):
                 for p in generator.parameters():
                     j_grads.append(p.grad)
                 partial_grads.append(j_grads)
+            #print(partial_grads)
             grads.append(partial_grads)
+            #print(len(grads))
+            #print(len(grads[0]))
+            #print(grads[0])
             # grads should be of length 3
             # grads[0] should be of length BATCH SIZE
             # 3.j
@@ -232,25 +248,29 @@ def main(opt):
             for i in range(len(grads[0])):
                 for j in range(len(grads[0][i])):
                     all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
+                    #if total_batch == 0:
+                        #all_grads[i][j].volatile = False
+            #print(all_grads)
+            #print(len(all_grads))
             # all_grads should be of length BATCH_SIZE
             c_phi_hat_optm.zero_grad()
             var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
             var_loss.backward()
             c_phi_hat_optm.step()
-            print('Batch {} estimate of the variance of the gradient: {}'.format(total_batch, var_loss.data[0]))
+            print('Batch estimate of the variance of the gradient at step {}: {}'.format(it, var_loss.data[0]))
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
             eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
             loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-            print('Batch %d True Generator Loss: %f' % (total_batch, loss))
+            print('Batch [%d] True Generator Loss: %f' % (total_batch, loss))
         
         for a in range(D_STEPS):
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
-                print('Batch {} Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+                print('Batch Discriminator Loss at step {} and epoch {}: {}'.format(a, b, loss))
 
 if __name__ == '__main__':
 
