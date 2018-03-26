@@ -41,7 +41,7 @@ GENERATED_NUM = 10000
 POSITIVE_FILE = 'data/math_equation_data.txt'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 10
+VOCAB_SIZE = 6
 # pre-training
 PRE_EPOCH_GEN = 1 if isDebug else 120
 PRE_EPOCH_DIS = 1 if isDebug else 5
@@ -56,7 +56,7 @@ D_EPOCHS = 1 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 4
+g_sequence_len = 15
 # Discriminator Parameters
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
@@ -94,7 +94,6 @@ def main(opt):
 
     # Generate toy data using target lstm
     print('Generating data ...')
-    #generate_samples(target_lstm, BATCH_SIZE, GENERATED_NUM, POSITIVE_FILE)
     
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
@@ -108,10 +107,11 @@ def main(opt):
     for epoch in range(PRE_EPOCH_GEN):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
-        generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
-        # loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-        # print('Epoch [%d] True Loss: %f' % (epoch, loss))
+        generated_string = eval_iter.convert_to_char(samples)
+        eval_score = get_data_goodness_score(generated_string)
+        print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -120,7 +120,7 @@ def main(opt):
         dis_criterion = dis_criterion.cuda()
     print('Pretrain Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
-        generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
+        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
@@ -249,13 +249,14 @@ def main(opt):
             print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
 
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
-            generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-            eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
-            # loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-            # print('Batch [%d] True Generator Loss: %f' % (total_batch, loss))
+                samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+                eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+                generated_string = eval_iter.convert_to_char(samples)
+                eval_score = get_data_goodness_score(generated_string)
+                print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
         
         for a in range(D_STEPS):
-            generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
+            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)

@@ -14,7 +14,7 @@ class DataLoader:
             '*': 3,
             '/': 4,
             '_': 5,
-            # '\n': 6
+            #'\n': 6
         }
         self.ix_to_char = {v:k for (k,v) in self.char_to_ix.items()}
         self.readFile(file_path)
