@@ -106,7 +106,6 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     if cuda:
         z_tilde.cuda()
 
-   
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
@@ -126,6 +125,8 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     value, b = torch.max(torch.transpose(z,0,1),0)
     # 3.d
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
+    if cuda:
+        z_tilde = z_tilde.cuda()
     z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
     z_tilde_gs = gumbel_softmax(z_tilde, VOCAB_SIZE, cuda)
     # reshaping the inputs of the discriminator
@@ -144,6 +145,7 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     if GD == 'RELAX':
         c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
         c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        #c2=discriminator.forward(z_tilde_gs)
         if cuda:
             c1=c1.cuda()
             c2=c2.cuda()

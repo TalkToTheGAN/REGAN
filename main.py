@@ -82,7 +82,7 @@ def main(opt):
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
-    if opt.cuda:
+    if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         c_phi_hat = c_phi_hat.cuda()
@@ -114,7 +114,7 @@ def main(opt):
     dis_optimizer = optim.Adam(discriminator.parameters())
     if opt.cuda:
         dis_criterion = dis_criterion.cuda()
-    print('Pretrain Dsicriminator ...')
+    print('Pretrain Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
         generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
@@ -196,7 +196,7 @@ def main(opt):
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
                     batch_grads[i][j] += batch_i_grads_2[i][j]
-            print(len(batch_grads))
+            #print(len(batch_grads))
             #print(batch_grads)
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
@@ -236,8 +236,8 @@ def main(opt):
                 partial_grads.append(j_grads)
             #print(partial_grads)
             grads.append(partial_grads)
-            print(len(grads))
-            print(len(grads[0]))
+            #print(len(grads))
+            #print(len(grads[0]))
             #print(grads[0])
             # grads should be of length 3
             # grads[0] should be of length BATCH SIZE
@@ -246,14 +246,13 @@ def main(opt):
             for i in range(len(grads[0])):
                 for j in range(len(grads[0][i])):
                     all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
-                    if total_batch == 0:
-                        all_grads[i][j].volatile = False
+                    #if total_batch == 0:
+                        #all_grads[i][j].volatile = False
             #print(all_grads)
-            print(len(all_grads))
+            #print(len(all_grads))
             # all_grads should be of length BATCH_SIZE
             c_phi_hat_optm.zero_grad()
             var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
-            print(var_loss)
             var_loss.backward()
             c_phi_hat_optm.step()
             print('Batch estimate of the variance of the gradient at step {}: {}'.format(it, var_loss.data[0]))
