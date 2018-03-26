@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-
+import copy
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import numpy as np 
 
 import utils
 
@@ -114,6 +115,41 @@ class GANLoss(nn.Module):
         loss =  - torch.sum(loss)
         return loss
 
+    def forward_reward(self, i, samples, prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+        """
+        Computes the Generator's loss in RELAX optimization setting. 
+
+        """
+        conditional_proba = Variable(torch.zeros(BATCH_SIZE, VOCAB_SIZE))
+        if cuda:
+            conditional_proba = conditional_proba.cuda()
+        for j in range(BATCH_SIZE):
+            conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, :] = rewards[j] * conditional_proba[j, :]
+        return conditional_proba
+
+    def forward_reward_grads(self, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+        """
+        Computes the Generator's loss in RELAX optimization setting. 
+
+        """
+        conditional_proba = Variable(torch.zeros(BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
+        batch_grads = []
+        if cuda:
+            conditional_proba = conditional_proba.cuda()
+        for j in range(BATCH_SIZE):
+            for i in range(g_sequence_len):
+                conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, :, :] = rewards[j] * conditional_proba[j, :, :]
+        last_idx = BATCH_SIZE-1
+        for j in range(BATCH_SIZE):
+            j_grads = []
+            g.zero_grad()
+            prob[j, :, :].backward(conditional_proba[j, :, :], retain_graph=True)
+            for p in g.parameters():
+                j_grads.append(p.grad)
+            batch_grads.append(j_grads)
+        return batch_grads
 
 class VarianceLoss(nn.Module):
     """Loss for the control variate annex network"""
@@ -121,5 +157,16 @@ class VarianceLoss(nn.Module):
         super(VarianceLoss, self).__init__()
 
     def forward(self, grad, cuda = False):
-        return torch.sum(grad**2)
+        bs = len(grad)
+        total_loss = Variable(torch.zeros(1), requires_grad=True)
+        if cuda:
+            total_loss = total_loss.cuda()
+        for j in range(bs):
+            batch_j_loss = Variable(torch.zeros(1), requires_grad=True)
+            if cuda:
+                batch_j_loss = total_loss.cuda()
+            for i in range(len(grad[j])):
+                batch_j_loss = torch.add(batch_j_loss, torch.sum(grad[j][i]**2))
+            total_loss = torch.add(total_loss, batch_j_loss)
+        return total_loss/bs
 
