@@ -2,7 +2,7 @@
 Auxiliary functions used during training.
 '''
 
-import os
+import os, sys
 import random
 import math
 
@@ -25,6 +25,8 @@ from data_iter import GenDataIter, DisDataIter
 
 from main import g_sequence_len, BATCH_SIZE, VOCAB_SIZE
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 def generate_samples(model, batch_size, generated_num, output_file):
     samples = []
