@@ -179,6 +179,7 @@ def get_seq_goodness_score(seq):
     # seq dim is a string of length len(seq)
 
     score = 0
+
     for i in range(len(seq)-2):
         j = i + 3
         sliced_string = seq[i:j]
@@ -190,8 +191,6 @@ def get_seq_goodness_score(seq):
         elif sliced_string[0] == '_' and sliced_string[1] =='_':
             score+=1
         elif sliced_string[1] =='_' and sliced_string[2] == '_':
-            score+=1
-        elif sliced_string[0] == '_' and sliced_string[1] =='_' and sliced_string[2] == '_':
             score+=1
 
     return score

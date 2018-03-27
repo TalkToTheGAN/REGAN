@@ -42,7 +42,7 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120
+PRE_EPOCH_GEN = 10 if isDebug else 120
 PRE_EPOCH_DIS = 2 if isDebug else 5
 PRE_ITER_DIS = 3 if isDebug else 3
 # adversarial training
