@@ -91,7 +91,6 @@ class DisDataIter(object):
         pairs = [self.pairs[i] for i in index]
         data = [p[0] for p in pairs]
         label = [p[1] for p in pairs]
-        #print(data)
         data = torch.LongTensor(np.asarray(data[:-1], dtype='int64'))
         label = torch.LongTensor(np.asarray(label[:-1], dtype='int64'))
         self.idx += self.batch_size
@@ -113,6 +112,8 @@ class DisDataIter(object):
         for line in lines:
             l = list(line)[:-1]
             l = [char_to_ix[s] for s in l]
+            if len(l) < 15:
+                l.append(5)
             lis.append(l)
         return lis
 

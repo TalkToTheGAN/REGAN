@@ -187,5 +187,11 @@ def get_seq_goodness_score(seq):
             score += 1
         elif sliced_string[0] != 'x' and sliced_string[1] =='x' and sliced_string[2] != 'x':
             score+=1
+        elif sliced_string[0] == '_' and sliced_string[1] =='_':
+            score+=1
+        elif sliced_string[1] =='_' and sliced_string[2] == '_':
+            score+=1
+        elif sliced_string[0] == '_' and sliced_string[1] =='_' and sliced_string[2] == '_':
+            score+=1
 
     return score
