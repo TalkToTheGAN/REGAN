@@ -144,11 +144,10 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     if cuda:
         z_tilde_gs = z_tilde_gs.cuda()
     if GD == 'REBAR':
-        return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
+        return discriminator.forward(z_gs), discriminator.forward(z_tilde_gs)
     if GD == 'RELAX':
         c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
         c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
-        #c2=discriminator.forward(z_tilde_gs)
         if cuda:
             c1=c1.cuda()
             c2=c2.cuda()

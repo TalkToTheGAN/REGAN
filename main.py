@@ -34,7 +34,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -42,9 +42,9 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 10 if isDebug else 120
-PRE_EPOCH_DIS = 2 if isDebug else 5
-PRE_ITER_DIS = 3 if isDebug else 3
+PRE_EPOCH_GEN = 0 if isDebug else 120
+PRE_EPOCH_DIS = 0 if isDebug else 5
+PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
 GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
@@ -60,8 +60,8 @@ g_sequence_len = 15
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 #d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-d_filter_sizes = [1, 2, 3, 4, 5, 6]
-d_num_filters = [100, 200, 200, 200, 200, 200]
+d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
 # Annex network parameters
@@ -206,6 +206,8 @@ def main(opt):
             # For loop that computes gradients to update G
             generator.zero_grad()
             for i in range(g_sequence_len):
+                #for p in generator.parameters():
+                #    print(p.grad)
                 # 3.g new gradient loss for relax 
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
@@ -243,6 +245,7 @@ def main(opt):
             for i in range(len(grads[0])):
                 for j in range(len(grads[0][i])):
                     all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
+            #print(all_grads)
             # all_grads should be of length BATCH_SIZE
             c_phi_hat_optm.zero_grad()
             var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
