@@ -3,11 +3,10 @@
 import os
 import random
 import math
-
 import argparse
 import tqdm
-
 import numpy as np
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -31,7 +30,7 @@ isDebug = True
 # ================== Parameter Definition =================
 
 # Basic Training Parameters
-THC_CACHING_ALLOCATOR=0
+THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
@@ -44,8 +43,8 @@ EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
 PRE_EPOCH_GEN = 1 if isDebug else 120
-PRE_EPOCH_DIS = 1 if isDebug else 5
-PRE_ITER_DIS = 1 if isDebug else 3
+PRE_EPOCH_DIS = 2 if isDebug else 5
+PRE_ITER_DIS = 3 if isDebug else 3
 # adversarial training
 GD = 'RELAX' # REBAR or RELAX
 UPDATE_RATE = 0.8
@@ -61,8 +60,8 @@ g_sequence_len = 15
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 #d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-d_filter_sizes = [1, 2, 3, 4]
-d_num_filters = [100, 200, 200, 200]
+d_filter_sizes = [1, 2, 3, 4, 5, 6]
+d_num_filters = [100, 200, 200, 200, 200, 200]
 d_dropout = 0.75
 d_num_class = 2
 # Annex network parameters
@@ -110,6 +109,7 @@ def main(opt):
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
         generated_string = eval_iter.convert_to_char(samples)
+        #print(generated_string)
         eval_score = get_data_goodness_score(generated_string)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
 
@@ -148,6 +148,8 @@ def main(opt):
     if cuda:
         c_phi_hat_loss = c_phi_hat_loss.cuda()
     c_phi_hat_optm = optim.Adam(c_phi_hat.parameters())
+
+    gen_scores = []
     
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
@@ -253,6 +255,7 @@ def main(opt):
                 eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
                 generated_string = eval_iter.convert_to_char(samples)
                 eval_score = get_data_goodness_score(generated_string)
+                gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
         
         for a in range(D_STEPS):
@@ -261,6 +264,9 @@ def main(opt):
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+
+    pl.plot(gen_scores)
+    plt.show()
 
 if __name__ == '__main__':
 
