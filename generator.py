@@ -65,7 +65,7 @@ class Generator(nn.Module):
         if x is None:
             flag = True
         if flag:
-            x = Variable(torch.zeros((batch_size, 1)).long())
+            x = Variable(torch.randn((batch_size, 1)).long())
         if self.use_cuda:
             x = x.cuda()
         h, c = self.init_hidden(batch_size)

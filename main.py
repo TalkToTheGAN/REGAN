@@ -157,7 +157,7 @@ def main(opt):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
             # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
-            zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
+            zeros = torch.randn((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
@@ -178,12 +178,6 @@ def main(opt):
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
-            c_phi_z = torch.sum(c_phi_z_ori[:,1])
-            c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])
-            if opt.cuda:
-                c_phi_z = c_phi_z.cuda()
-                c_phi_z_tilde = c_phi_z_tilde.cuda()
-                c_phi_hat=c_phi_hat.cuda()
             # 3.i
             grads = []
             first_term_grads = []
@@ -200,7 +194,8 @@ def main(opt):
             batch_grads = batch_i_grads_1
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
-                    batch_grads[i][j] += batch_i_grads_2[i][j]
+                    #should it be minus??????????????????????????????????/
+                    batch_grads[i][j] -= batch_i_grads_2[i][j]
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
             # For loop that computes gradients to update G
@@ -235,7 +230,7 @@ def main(opt):
                 c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
                 j_grads = []
                 for p in generator.parameters():
-                    j_grads.append(p.grad)
+                    j_grads.append(-1*p.grad)
                 partial_grads.append(j_grads)
             grads.append(partial_grads)
             # grads should be of length 3
