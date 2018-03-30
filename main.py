@@ -34,7 +34,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -46,9 +46,9 @@ PRE_EPOCH_GEN = 0 if isDebug else 120
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = 'RELAX' # REBAR or RELAX
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 100
+TOTAL_BATCH = 8
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
@@ -65,10 +65,10 @@ d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
 # Annex network parameters
-#c_filter_sizes = [1, 3, 5, 7, 9, 15]
-#c_num_filters = [12, 25, 25, 12, 12, 20]
-c_filter_sizes = [1, 3]
-c_num_filters = [12, 25]
+c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_num_filters = [100, 200, 200, 200, 100, 100]
+#c_filter_sizes = [1, 3]
+#c_num_filters = [100, 200]
 
 
 def main(opt):
@@ -155,6 +155,7 @@ def main(opt):
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
+            #print(samples)
             # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.randn((BATCH_SIZE, 1)).type(torch.LongTensor)
@@ -178,6 +179,13 @@ def main(opt):
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
+            #print(c_phi_z_tilde_ori)
+            c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
+            c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
+            if opt.cuda:
+                c_phi_z = c_phi_z.cuda()
+                c_phi_z_tilde = c_phi_z_tilde.cuda()
+                c_phi_hat=c_phi_hat.cuda()
             # 3.i
             grads = []
             first_term_grads = []
@@ -187,30 +195,37 @@ def main(opt):
             # first, re arrange prob
             new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
             # 3.g new gradient loss for relax 
-            batch_i_grads_1 = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            batch_i_grads_1_ori = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            batch_i_grads_1 = []
+            for i in range(BATCH_SIZE):
+            	i_grads = []
+            	for j in range(len(batch_i_grads_1_ori[i])):
+            		i_grads.append(batch_i_grads_1_ori[i][j].clone())
+            	batch_i_grads_1.append(i_grads)
             batch_i_grads_2 = gen_gan_loss.forward_reward_grads(samples, new_prob, c_phi_z_tilde_ori[:,1], generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
             # batch_i_grads should be of length BATCH SIZE of arrays of all the gradients
             # # 3.i
             batch_grads = batch_i_grads_1
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
-                    #should it be minus??????????????????????????????????/
-                    batch_grads[i][j] -= batch_i_grads_2[i][j]
+                    batch_grads[i][j] = torch.add(batch_grads[i][j], (-1)*batch_i_grads_2[i][j])
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
-            # For loop that computes gradients to update G
+            # NOW, TRAIN THE GENERATOR
             generator.zero_grad()
             for i in range(g_sequence_len):
-                #for p in generator.parameters():
-                #    print(p.grad)
                 # 3.g new gradient loss for relax 
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-                cond_prob -= c_term
+                #print(cond_prob[0])
+                #print(c_term[0])
+                if GD != "REINFORCE":
+                	cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
-            # 3.h 
-            c_phi_z.backward(retain_graph=True)
-            c_phi_z_tilde.backward(retain_graph=True)
+            # 3.h - still training the generator, with the last two terms of the RELAX equation
+            if GD != "REINFORCE":
+            	c_phi_z.backward(retain_graph=True)
+            	c_phi_z_tilde.backward(retain_graph=True)
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
@@ -233,14 +248,21 @@ def main(opt):
                     j_grads.append(-1*p.grad)
                 partial_grads.append(j_grads)
             grads.append(partial_grads)
+            print('1st contribution to the gradient')
+            print(grads[0][0][6])
+            print('2nd contribution to the gradient')
+            print(grads[1][0][6])
+            print('3rd contribution to the gradient')
+            print(grads[2][0][6])
             # grads should be of length 3
             # grads[0] should be of length BATCH SIZE
             # 3.j
             all_grads = grads[0]
             for i in range(len(grads[0])):
                 for j in range(len(grads[0][i])):
-                    all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
-            #print(all_grads)
+                    all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
+            # print('sum')
+            # print(all_grads[0][6])
             # all_grads should be of length BATCH_SIZE
             c_phi_hat_optm.zero_grad()
             var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
@@ -263,7 +285,7 @@ def main(opt):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
 
-    pl.plot(gen_scores)
+    plt.plot(gen_scores)
     plt.show()
 
 if __name__ == '__main__':

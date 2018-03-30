@@ -125,7 +125,7 @@ class GANLoss(nn.Module):
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
             conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
-            conditional_proba[j, :] = -rewards[j] * conditional_proba[j, :]
+            conditional_proba[j, :] = - (rewards[j] * conditional_proba[j, :]) / BATCH_SIZE 
         return conditional_proba
 
     def forward_reward_grads(self, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
@@ -140,8 +140,8 @@ class GANLoss(nn.Module):
         for j in range(BATCH_SIZE):
             for i in range(g_sequence_len):
                 conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
-            conditional_proba[j, :, :] = -rewards[j] * conditional_proba[j, :, :]
-        last_idx = BATCH_SIZE-1
+            conditional_proba[j, :, :] = - (rewards[j] * conditional_proba[j, :, :])
+        #print(conditional_proba[0, :, :])
         for j in range(BATCH_SIZE):
             j_grads = []
             g.zero_grad()
@@ -149,6 +149,7 @@ class GANLoss(nn.Module):
             for p in g.parameters():
                 j_grads.append(p.grad)
             batch_grads.append(j_grads)
+        #print(batch_grads[0][6])
         return batch_grads
 
 class VarianceLoss(nn.Module):
