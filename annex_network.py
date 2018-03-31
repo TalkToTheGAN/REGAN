@@ -43,10 +43,11 @@ class AnnexNetwork(nn.Module):
         highway = self.highway(pred)
         pred = F.sigmoid(highway) *  F.relu(highway) + (1. - F.sigmoid(highway)) * pred
         pred = self.softmax(self.lin(self.dropout(pred)))
+
         return pred
 
     def init_parameters(self):
         for param in self.parameters():
-            param.data.uniform_(-0.05, 0.05)
+            param.data.normal_(0, 0.02)
 
 

@@ -59,18 +59,17 @@ class Generator(nn.Module):
         for param in self.parameters():
             param.data.uniform_(-0.05, 0.05)
 
-    def sample(self, batch_size, seq_len, x=None):
+    def sample(self, batch_size, seq_len, x=None, sampleFromZero=False):
         res = []
-        flag = False # whether sample from zero
         if x is None:
-            flag = True
-        if flag:
+            sampleFromZero = True
+        if sampleFromZero:
             x = Variable(torch.zeros((batch_size, 1)).long())
         if self.use_cuda:
             x = x.cuda()
         h, c = self.init_hidden(batch_size)
         samples = []
-        if flag:
+        if sampleFromZero:
             for i in range(seq_len):
                 output, h, c = self.step(x, h, c)
                 x = output.multinomial(1)

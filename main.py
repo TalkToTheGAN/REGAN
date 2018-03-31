@@ -3,11 +3,10 @@
 import os
 import random
 import math
-
 import argparse
 import tqdm
-
 import numpy as np
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -17,9 +16,9 @@ from torch.autograd import Variable
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
+from data_loader import DataLoader
 
 from utils import *
 from loss import *
@@ -30,45 +29,46 @@ isDebug = True
 # ================== Parameter Definition =================
 
 # Basic Training Parameters
-THC_CACHING_ALLOCATOR=0
+THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
 BATCH_SIZE = 16
 GENERATED_NUM = 10000
 # related to data
-POSITIVE_FILE = 'real.data'
+POSITIVE_FILE = 'data/math_equation_data.txt'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 5000
+VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120
-PRE_EPOCH_DIS = 1 if isDebug else 5
-PRE_ITER_DIS = 1 if isDebug else 3
+PRE_EPOCH_GEN = 0 if isDebug else 120
+PRE_EPOCH_DIS = 0 if isDebug else 5
+PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = 'RELAX' # REBAR or RELAX
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 100
+TOTAL_BATCH = 8
 G_STEPS = 1 if isDebug else 1
-D_STEPS = 4 if isDebug else 4
-D_EPOCHS = 2 if isDebug else 2
+D_STEPS = 1 if isDebug else 4
+D_EPOCHS = 1 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 20
+g_sequence_len = 15
 # Discriminator Parameters
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 #d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-d_filter_sizes = [1, 2, 3, 4]
-d_num_filters = [100, 200, 200, 200]
+d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
 # Annex network parameters
-#c_filter_sizes = [1, 3, 5, 7, 9, 15]
-#c_num_filters = [12, 25, 25, 12, 12, 20]
-c_filter_sizes = [1, 3]
-c_num_filters = [12, 25]
+c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_num_filters = [100, 200, 200, 200, 100, 100]
+#c_filter_sizes = [1, 3]
+#c_num_filters = [100, 200]
+
 
 def main(opt):
 
@@ -87,19 +87,16 @@ def main(opt):
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
-    if opt.cuda:
+    if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         c_phi_hat = c_phi_hat.cuda()
-        target_lstm = target_lstm.cuda()
 
     # Generate toy data using target lstm
     print('Generating data ...')
-    generate_samples(target_lstm, BATCH_SIZE, GENERATED_NUM, POSITIVE_FILE)
     
     # Load data from file
-    gen_data_iter = GenDataIter(POSITIVE_FILE, BATCH_SIZE)
+    gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
 
     # Pretrain Generator using MLE
     gen_criterion = nn.NLLLoss(size_average=False)
@@ -110,10 +107,12 @@ def main(opt):
     for epoch in range(PRE_EPOCH_GEN):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
-        generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-        eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
-        loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-        print('Epoch [%d] True Loss: %f' % (epoch, loss))
+        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+        eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+        generated_string = eval_iter.convert_to_char(samples)
+        #print(generated_string)
+        eval_score = get_data_goodness_score(generated_string)
+        print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -122,7 +121,7 @@ def main(opt):
         dis_criterion = dis_criterion.cuda()
     print('Pretrain Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
-        generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
+        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
@@ -133,7 +132,7 @@ def main(opt):
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
     print('#####################################################')
-    print('Start Adeversatial Training...\n')
+    print('Start Adversatial Training...\n')
     
     gen_gan_loss = GANLoss()
     gen_gan_optm = optim.Adam(generator.parameters())
@@ -152,11 +151,14 @@ def main(opt):
     if cuda:
         c_phi_hat_loss = c_phi_hat_loss.cuda()
     c_phi_hat_optm = optim.Adam(c_phi_hat.parameters())
+
+    gen_scores = []
     
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
+            #print(samples)
             # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
@@ -164,6 +166,9 @@ def main(opt):
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
             targets = Variable(samples.data).contiguous().view((-1,))
+            if opt.cuda:
+                inputs=inputs.cuda()
+                targets=targets.cuda()
             # calculate the reward
             rewards = rollout.get_reward(samples, discriminator)
             rewards = Variable(torch.Tensor(rewards))
@@ -177,8 +182,13 @@ def main(opt):
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
-            c_phi_z = torch.sum(c_phi_z_ori[:,1])
-            c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])
+            #print(c_phi_z_tilde_ori)
+            c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
+            c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
+            if opt.cuda:
+                c_phi_z = c_phi_z.cuda()
+                c_phi_z_tilde = c_phi_z_tilde.cuda()
+                c_phi_hat=c_phi_hat.cuda()
             # 3.i
             grads = []
             first_term_grads = []
@@ -188,81 +198,104 @@ def main(opt):
             # first, re arrange prob
             new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
             # 3.g new gradient loss for relax 
-            batch_i_grads_1 = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            batch_i_grads_1_ori = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            batch_i_grads_1 = []
+            for i in range(BATCH_SIZE):
+            	i_grads = []
+            	for j in range(len(batch_i_grads_1_ori[i])):
+            		i_grads.append(batch_i_grads_1_ori[i][j].clone())
+            	batch_i_grads_1.append(i_grads)
             batch_i_grads_2 = gen_gan_loss.forward_reward_grads(samples, new_prob, c_phi_z_tilde_ori[:,1], generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
             # batch_i_grads should be of length BATCH SIZE of arrays of all the gradients
             # # 3.i
             batch_grads = batch_i_grads_1
             for i in range(len(batch_i_grads_1)):
                 for j in range(len(batch_i_grads_1[i])):
-                    batch_grads[i][j] += batch_i_grads_2[i][j]
+                    batch_grads[i][j] = torch.add(batch_grads[i][j], (-1)*batch_i_grads_2[i][j])
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
-            # For loop that computes gradients to update G
+            # NOW, TRAIN THE GENERATOR
             generator.zero_grad()
             for i in range(g_sequence_len):
                 # 3.g new gradient loss for relax 
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-                cond_prob -= c_term
+                #print(cond_prob[0])
+                #print(c_term[0])
+                if GD != "REINFORCE":
+                	cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
-            # 3.h 
-            c_phi_z.backward(retain_graph=True)
-            c_phi_z_tilde.backward(retain_graph=True)
+            # 3.h - still training the generator, with the last two terms of the RELAX equation
+            if GD != "REINFORCE":
+            	c_phi_z.backward(retain_graph=True)
+            	c_phi_z_tilde.backward(retain_graph=True)
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
-            partial_grads = []
-            for j in range(BATCH_SIZE):
-                generator.zero_grad()
-                c_phi_z_ori[j,1].backward(retain_graph=True)
-                j_grads = []
-                for p in generator.parameters():
-                    j_grads.append(p.grad)
-                partial_grads.append(j_grads)
-            grads.append(partial_grads)
-            # c_phi_z_tilde term
-            partial_grads = []
-            for j in range(BATCH_SIZE):
-                generator.zero_grad()
-                c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
-                j_grads = []
-                for p in generator.parameters():
-                    j_grads.append(p.grad)
-                partial_grads.append(j_grads)
-            grads.append(partial_grads)
-            # grads should be of length 3
-            # grads[0] should be of length BATCH SIZE
-            # 3.j
-            all_grads = grads[0]
-            for i in range(len(grads[0])):
-                for j in range(len(grads[0][i])):
-                    all_grads[i][j] += grads[1][i][j] + grads[2][i][j]
-            # all_grads should be of length BATCH_SIZE
-            c_phi_hat_optm.zero_grad()
-            var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
-            var_loss.backward()
-            c_phi_hat_optm.step()
-            print('Batch {} estimate of the variance of the gradient: {}'.format(total_batch, var_loss.data[0]))
+            if GD == "RELAX":
+	            partial_grads = []
+	            for j in range(BATCH_SIZE):
+	                generator.zero_grad()
+	                c_phi_z_ori[j,1].backward(retain_graph=True)
+	                j_grads = []
+	                for p in generator.parameters():
+	                    j_grads.append(p.grad)
+	                partial_grads.append(j_grads)
+	            grads.append(partial_grads)
+	            # c_phi_z_tilde term
+	            partial_grads = []
+	            for j in range(BATCH_SIZE):
+	                generator.zero_grad()
+	                c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
+	                j_grads = []
+	                for p in generator.parameters():
+	                    j_grads.append(-1*p.grad)
+	                partial_grads.append(j_grads)
+	            grads.append(partial_grads)
+	            print('1st contribution to the gradient')
+	            print(grads[0][0][6])
+	            print('2nd contribution to the gradient')
+	            print(grads[1][0][6])
+	            print('3rd contribution to the gradient')
+	            print(grads[2][0][6])
+	            # grads should be of length 3
+	            # grads[0] should be of length BATCH SIZE
+	            # 3.j
+	            all_grads = grads[0]
+	            for i in range(len(grads[0])):
+	                for j in range(len(grads[0][i])):
+	                    all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
+	            # print('sum')
+	            # print(all_grads[0][6])
+	            # all_grads should be of length BATCH_SIZE
+	            c_phi_hat_optm.zero_grad()
+	            var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+	            var_loss.backward()
+	            c_phi_hat_optm.step()
+	            print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
 
+        # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
-            generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-            eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
-            loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
-            print('Batch %d True Generator Loss: %f' % (total_batch, loss))
-            if visualize:
-                adversarial_G_loss_logger.log(total_batch, loss)
+                samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+                eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+                generated_string = eval_iter.convert_to_char(samples)
+                print(generated_string)
+                eval_score = get_data_goodness_score(generated_string)
+                gen_scores.append(eval_score)
+                print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
 
-        batch_D_loss = 0.0
+		# Train the discriminator
         for a in range(D_STEPS):
-            generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
+            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
-                print('Batch {} Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
-                batch_D_loss = loss
-        if visualize:
-            adversarial_D_loss_logger.log(total_batch, batch_D_loss)
+
+                print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+
+    plt.plot(gen_scores)
+    plt.show()
+
 
 if __name__ == '__main__':
 

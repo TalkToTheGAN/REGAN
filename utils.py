@@ -19,7 +19,6 @@ from torch.autograd import Variable
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 
@@ -37,6 +36,7 @@ def generate_samples(model, batch_size, generated_num, output_file):
         for sample in samples:
             string = ' '.join([str(s) for s in sample])
             fout.write('%s\n' % string)
+    return Variable(torch.LongTensor(samples[0:batch_size]))
 
 def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
     total_loss = 0.
@@ -50,7 +50,7 @@ def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
         target = target.contiguous().view(-1)
         pred = model.forward(data)
         loss = criterion(pred, target)
-        total_loss += loss.data[0]
+        total_loss += loss.item()
         total_words += data.size(0) * data.size(1)
         optimizer.zero_grad()
         loss.backward()
@@ -95,19 +95,33 @@ def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
 # categorical re-sampling exactly as in Backpropagating through the void - Appendix B
 def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
+    z_tilde = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
         v = v.cuda()
-    z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
-    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))
+    '''z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
+    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))'''
+    #naive implementation
+    for i in range(theta_prime.size(0)):
+        v_b = v[i,int(b[i])]
+        z_tilde[i,:] = -torch.log((-torch.log(v[i,:])/theta_prime[i,:]) - torch.log(v_b))
+        z_tilde[i,int(b[i])]=-torch.log(-torch.log(v[i,int(b[i])]))
+    if cuda:
+        z_tilde.cuda()
+
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
 def prob_to_seq(x, cuda=False):
-    x_refactor = Variable(torch.zeros(x.size(0), x.size(1)))
+    batch_size = x.size(0); seq_len = x.size(1); edim = x.size(2)
+    x_refactor = Variable(torch.zeros(batch_size, seq_len))
     if cuda:
         x_refactor = x_refactor.cuda()
-    for i in range(x.size(1)):
-        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+
+    for i in range(seq_len):
+        # x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
+        x_refactor[:,i] = test
+
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
@@ -115,9 +129,11 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
     # 3.c
-    value, b = torch.max(z,0)
+    value, b = torch.max(torch.transpose(z,0,1),0)
     # 3.d
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
+    if cuda:
+        z_tilde = z_tilde.cuda()
     z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
     z_tilde_gs = gumbel_softmax(z_tilde, VOCAB_SIZE, cuda)
     # reshaping the inputs of the discriminator
@@ -132,9 +148,14 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     if cuda:
         z_tilde_gs = z_tilde_gs.cuda()
     if GD == 'REBAR':
-        return c_phi_hat.forward(z),c_phi_hat.forward(z_tilde)
-    if GD == 'RELAX':
-        return c_phi_hat.forward(z) + discriminator.forward(z_gs), c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        return discriminator.forward(z_gs), discriminator.forward(z_tilde_gs)
+    if (GD == 'RELAX') or (GD == "REINFORCE"):
+        c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
+        c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        if cuda:
+            c1=c1.cuda()
+            c2=c2.cuda()
+    return c1,c2
 
 # get the number of parameters of a neural network
 def get_n_params(model):
@@ -145,3 +166,34 @@ def get_n_params(model):
             nn = nn*s
         pp += nn
     return pp
+
+'''
+Per batch score 
+'''
+def get_data_goodness_score(all_data):
+    # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
+    total_batch_score = 0
+    #for batch_index, batch_input in enumerate(all_data):
+    for seq_index, seq_input in enumerate(all_data):
+        total_batch_score += get_seq_goodness_score(seq_input)
+    return total_batch_score/len(all_data)
+
+def get_seq_goodness_score(seq):
+    # seq dim is a string of length len(seq)
+
+    score = 0
+
+    for i in range(len(seq)-2):
+        j = i + 3
+        sliced_string = seq[i:j]
+        
+        if sliced_string[0] == 'x' and sliced_string[1]!='x' and sliced_string[2] == 'x':
+            score += 1
+        elif sliced_string[0] != 'x' and sliced_string[1] =='x' and sliced_string[2] != 'x':
+            score+=1
+        elif sliced_string[0] == '_' and sliced_string[1] =='_':
+            score+=1
+        elif sliced_string[1] =='_' and sliced_string[2] == '_':
+            score+=1
+
+    return score
