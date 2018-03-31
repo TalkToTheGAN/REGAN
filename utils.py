@@ -116,9 +116,9 @@ def prob_to_seq(x, cuda=False):
     if cuda:
         x_refactor = x_refactor.cuda()
     for i in range(x.size(1)):
-        #x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
-        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
-        x_refactor[:,i] = test
+        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        # test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
+        # x_refactor[:,i] = test
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
