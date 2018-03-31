@@ -46,7 +46,7 @@ PRE_EPOCH_GEN = 0 if isDebug else 120
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 8
 G_STEPS = 1 if isDebug else 1
@@ -229,55 +229,59 @@ def main(opt):
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
-            partial_grads = []
-            for j in range(BATCH_SIZE):
-                generator.zero_grad()
-                c_phi_z_ori[j,1].backward(retain_graph=True)
-                j_grads = []
-                for p in generator.parameters():
-                    j_grads.append(p.grad)
-                partial_grads.append(j_grads)
-            grads.append(partial_grads)
-            # c_phi_z_tilde term
-            partial_grads = []
-            for j in range(BATCH_SIZE):
-                generator.zero_grad()
-                c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
-                j_grads = []
-                for p in generator.parameters():
-                    j_grads.append(-1*p.grad)
-                partial_grads.append(j_grads)
-            grads.append(partial_grads)
-            print('1st contribution to the gradient')
-            print(grads[0][0][6])
-            print('2nd contribution to the gradient')
-            print(grads[1][0][6])
-            print('3rd contribution to the gradient')
-            print(grads[2][0][6])
-            # grads should be of length 3
-            # grads[0] should be of length BATCH SIZE
-            # 3.j
-            all_grads = grads[0]
-            for i in range(len(grads[0])):
-                for j in range(len(grads[0][i])):
-                    all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
-            # print('sum')
-            # print(all_grads[0][6])
-            # all_grads should be of length BATCH_SIZE
-            c_phi_hat_optm.zero_grad()
-            var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
-            var_loss.backward()
-            c_phi_hat_optm.step()
-            print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+            if GD == "RELAX":
+	            partial_grads = []
+	            for j in range(BATCH_SIZE):
+	                generator.zero_grad()
+	                c_phi_z_ori[j,1].backward(retain_graph=True)
+	                j_grads = []
+	                for p in generator.parameters():
+	                    j_grads.append(p.grad)
+	                partial_grads.append(j_grads)
+	            grads.append(partial_grads)
+	            # c_phi_z_tilde term
+	            partial_grads = []
+	            for j in range(BATCH_SIZE):
+	                generator.zero_grad()
+	                c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
+	                j_grads = []
+	                for p in generator.parameters():
+	                    j_grads.append(-1*p.grad)
+	                partial_grads.append(j_grads)
+	            grads.append(partial_grads)
+	            print('1st contribution to the gradient')
+	            print(grads[0][0][6])
+	            print('2nd contribution to the gradient')
+	            print(grads[1][0][6])
+	            print('3rd contribution to the gradient')
+	            print(grads[2][0][6])
+	            # grads should be of length 3
+	            # grads[0] should be of length BATCH SIZE
+	            # 3.j
+	            all_grads = grads[0]
+	            for i in range(len(grads[0])):
+	                for j in range(len(grads[0][i])):
+	                    all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
+	            # print('sum')
+	            # print(all_grads[0][6])
+	            # all_grads should be of length BATCH_SIZE
+	            c_phi_hat_optm.zero_grad()
+	            var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+	            var_loss.backward()
+	            c_phi_hat_optm.step()
+	            print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
 
+        # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
                 samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
                 eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
                 generated_string = eval_iter.convert_to_char(samples)
+                print(generated_string)
                 eval_score = get_data_goodness_score(generated_string)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
-        
+
+		# Train the discriminator        
         for a in range(D_STEPS):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)

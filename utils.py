@@ -51,7 +51,7 @@ def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
         target = target.contiguous().view(-1)
         pred = model.forward(data)
         loss = criterion(pred, target)
-        total_loss += loss.data[0]
+        total_loss += loss.item()
         total_words += data.size(0) * data.size(1)
         optimizer.zero_grad()
         loss.backward()

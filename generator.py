@@ -57,7 +57,7 @@ class Generator(nn.Module):
     
     def init_params(self):
         for param in self.parameters():
-            param.data.normal_(0, 0.02)
+            param.data.uniform_(-0.05, 0.05)
 
     def sample(self, batch_size, seq_len, x=None):
         res = []

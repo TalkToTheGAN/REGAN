@@ -62,7 +62,7 @@ class DataLoader:
             input_data = [self.char_to_ix[c] for c in line]
             # target doesn't contain the first char, add 6 (maps to '\n') to end
             target_data = input_data[1:]
-            target_data.append(6)
+            target_data.append(0)
             
             all_input_data.append(input_data)
             all_target_data.append(target_data)
