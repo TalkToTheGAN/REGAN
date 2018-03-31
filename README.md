@@ -32,3 +32,5 @@ Run with `--visualize` parameter
 ```
 $ python main.py --cude {GPU_DEVICE_NUMBER} --visualize
 ```
+
+![Visdom Server Page](img/adversarial_loss_plot.png)
