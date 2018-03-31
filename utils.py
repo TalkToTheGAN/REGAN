@@ -112,13 +112,16 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
 def prob_to_seq(x, cuda=False):
-    x_refactor = Variable(torch.zeros(x.size(0), x.size(1)))
+    batch_size = x.size(0); seq_len = x.size(1); edim = x.size(2)
+    x_refactor = Variable(torch.zeros(batch_size, seq_len))
     if cuda:
         x_refactor = x_refactor.cuda()
-    for i in range(x.size(1)):
-        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
-        # test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
-        # x_refactor[:,i] = test
+
+    for i in range(seq_len):
+        # x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
+        x_refactor[:,i] = test
+
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
