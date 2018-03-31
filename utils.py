@@ -117,7 +117,9 @@ def prob_to_seq(x, cuda=False):
     if cuda:
         x_refactor = x_refactor.cuda()
     for i in range(x.size(1)):
-        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        #x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
+        x_refactor[:,i] = test
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
@@ -145,7 +147,7 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
         z_tilde_gs = z_tilde_gs.cuda()
     if GD == 'REBAR':
         return discriminator.forward(z_gs), discriminator.forward(z_tilde_gs)
-    if GD == 'RELAX':
+    if (GD == 'RELAX') or (GD == "REINFORCE"):
         c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
         c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
         if cuda:
