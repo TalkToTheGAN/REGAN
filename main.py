@@ -74,6 +74,10 @@ def main(opt):
 
     cuda = opt.cuda; visualize = opt.visualize
     print(f"cuda = {cuda}, visualize = {opt.visualize}")
+    if visualize:
+        pretrain_d_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
+        adversarial_G_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Loss'})
+        adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
@@ -123,6 +127,8 @@ def main(opt):
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
             print('Epoch [%d], loss: %f' % (epoch, loss))
+            if visualize:
+                pretrain_d_loss_logger.log(epoch, loss)
 
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
@@ -244,13 +250,19 @@ def main(opt):
             eval_iter = GenDataIter(EVAL_FILE, BATCH_SIZE)
             loss = eval_epoch(target_lstm, eval_iter, gen_criterion, cuda)
             print('Batch %d True Generator Loss: %f' % (total_batch, loss))
-        
+            if visualize:
+                adversarial_G_loss_logger.log(total_batch, loss)
+
+        batch_D_loss = 0.0
         for a in range(D_STEPS):
             generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
                 print('Batch {} Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+                batch_D_loss = loss
+        if visualize:
+            adversarial_D_loss_logger.log(total_batch, batch_D_loss)
 
 if __name__ == '__main__':
 
@@ -265,6 +277,7 @@ if __name__ == '__main__':
     try:
         from eval.helper import *
         from eval.BLEU_score import *
+        from visdom import Visdom
         import torchnet as tnt
         from torchnet.engine import Engine
         from torchnet.logger import VisdomPlotLogger, VisdomLogger
