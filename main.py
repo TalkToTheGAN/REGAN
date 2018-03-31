@@ -16,7 +16,6 @@ from torch.autograd import Variable
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 from data_loader import DataLoader
@@ -84,12 +83,10 @@ def main(opt):
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         c_phi_hat = c_phi_hat.cuda()
-        target_lstm = target_lstm.cuda()
 
     # Generate toy data using target lstm
     print('Generating data ...')

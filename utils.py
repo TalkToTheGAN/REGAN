@@ -19,7 +19,6 @@ from torch.autograd import Variable
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 
