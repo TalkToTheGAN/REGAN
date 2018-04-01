@@ -16,7 +16,6 @@ from torch.autograd import Variable
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 from data_loader import DataLoader
@@ -42,13 +41,13 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 0 if isDebug else 120
+PRE_EPOCH_GEN = 1 if isDebug else 120
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
 GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 8
+TOTAL_BATCH = 30
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
@@ -84,12 +83,10 @@ def main(opt):
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    target_lstm = TargetLSTM(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
         c_phi_hat = c_phi_hat.cuda()
-        target_lstm = target_lstm.cuda()
 
     # Generate toy data using target lstm
     print('Generating data ...')
@@ -103,14 +100,16 @@ def main(opt):
     if cuda:
         gen_criterion = gen_criterion.cuda()
     print('Pretrain with MLE ...')
+    pre_train_scores = []
     for epoch in range(PRE_EPOCH_GEN):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
         generated_string = eval_iter.convert_to_char(samples)
-        #print(generated_string)
+        print(generated_string)
         eval_score = get_data_goodness_score(generated_string)
+        pre_train_scores.append(eval_score)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
 
     # Pretrain Discriminator
@@ -149,7 +148,7 @@ def main(opt):
         c_phi_hat_loss = c_phi_hat_loss.cuda()
     c_phi_hat_optm = optim.Adam(c_phi_hat.parameters())
 
-    gen_scores = []
+    gen_scores = pre_train_scores
     
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
@@ -222,6 +221,11 @@ def main(opt):
                 if GD != "REINFORCE":
                 	cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
+            visu_grads = []
+            for p in generator.parameters():
+            	visu_grads.append(p.grad)
+            print("Checking gradients")
+            print(visu_grads[6])
             # 3.h - still training the generator, with the last two terms of the RELAX equation
             if GD != "REINFORCE":
             	c_phi_z.backward(retain_graph=True)
@@ -290,6 +294,8 @@ def main(opt):
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
 
     plt.plot(gen_scores)
+    plt.ylim((0,13))
+    plt.title('{}_after_{}_epochs_of_pretraining'.format(GD, PRE_EPOCH_GEN))
     plt.show()
 
 if __name__ == '__main__':

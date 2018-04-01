@@ -124,7 +124,8 @@ class GANLoss(nn.Module):
         if cuda:
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
-            conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            #conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, int(samples[j, i])] = 1
             conditional_proba[j, :] = - (rewards[j] * conditional_proba[j, :]) / BATCH_SIZE 
         return conditional_proba
 
@@ -139,7 +140,8 @@ class GANLoss(nn.Module):
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
             for i in range(g_sequence_len):
-                conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+                #conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+                conditional_proba[j, i, int(samples[j, i])] = 1
             conditional_proba[j, :, :] = - (rewards[j] * conditional_proba[j, :, :])
         #print(conditional_proba[0, :, :])
         for j in range(BATCH_SIZE):
