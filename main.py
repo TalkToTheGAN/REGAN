@@ -157,7 +157,7 @@ def main(opt):
             #print(samples)
             # samples has size (BS, sequence_len)
             # construct the input to the generator, add zeros before samples and delete the last column
-            zeros = torch.randn((BATCH_SIZE, 1)).type(torch.LongTensor)
+            zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
             inputs = Variable(torch.cat([zeros, samples.data], dim = 1)[:, :-1].contiguous())
