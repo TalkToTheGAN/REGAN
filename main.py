@@ -195,6 +195,7 @@ def main(opt):
             new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
             # 3.g new gradient loss for relax 
             batch_i_grads_1_ori = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            # the above gradients are going to be modified when calling forward_reward_grads() again, so we have no choice but to clone them
             batch_i_grads_1 = []
             for i in range(BATCH_SIZE):
             	i_grads = []
@@ -224,7 +225,7 @@ def main(opt):
             visu_grads = []
             for p in generator.parameters():
             	visu_grads.append(p.grad)
-            print("Checking gradients")
+            print("Checking gradients:")
             print(visu_grads[6])
             # 3.h - still training the generator, with the last two terms of the RELAX equation
             if GD != "REINFORCE":
