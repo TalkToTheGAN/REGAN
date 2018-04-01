@@ -28,9 +28,18 @@ $ python main.py --cude {GPU_DEVICE_NUMBER}
 
 __Enable Visualization__
 
+Start the server (probably in a screen or tmux):
+```bash
+python -m visdom.server -port 8097
+```
+
 Run with `--visualize` parameter
 ```
 $ python main.py --cude {GPU_DEVICE_NUMBER} --visualize
 ```
 
 ![Visdom Server Page](img/adversarial_loss_plot.png)
+![Vanishing Gradients - With Pretraining](img/WithPretrain_NoGAN_learning_31Mar.png)
+![Console log - With Pretraining](img/ConsoleLog_NoGAN_learning_31Mar.png)
+
+
