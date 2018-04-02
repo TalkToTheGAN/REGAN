@@ -41,7 +41,7 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 0.5 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -50,7 +50,7 @@ CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 0.2 # can be a decimal number
+TOTAL_EPOCHS = 2 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -123,6 +123,10 @@ def main(opt):
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
+    # plt.plot(pre_train_scores)
+    # plt.ylim((0,13))
+    # plt.title('Generation scores over MLE pre-training epochs')
+    # plt.show()
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -308,7 +312,7 @@ def main(opt):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
-                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
+                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, cuda)
                 batch_G_loss = loss
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
         if visualize:
