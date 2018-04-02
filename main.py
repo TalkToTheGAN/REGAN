@@ -75,8 +75,9 @@ def main(opt):
     cuda = opt.cuda; visualize = opt.visualize
     print(f"cuda = {cuda}, visualize = {opt.visualize}")
     if visualize:
-        pretrain_d_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
-        adversarial_G_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Loss'})
+        pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
+        pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
+        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Goodness Score'})
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
@@ -110,9 +111,11 @@ def main(opt):
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
         generated_string = eval_iter.convert_to_char(samples)
-        #print(generated_string)
+        print(generated_string)
         eval_score = get_data_goodness_score(generated_string)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
+        if visualize:
+            pretrain_G_score_logger.log(epoch, eval_score)
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -127,7 +130,7 @@ def main(opt):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
             print('Epoch [%d], loss: %f' % (epoch, loss))
             if visualize:
-                pretrain_d_loss_logger.log(epoch, loss)
+                pretrain_D_loss_logger.log(epoch, loss)
 
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
@@ -283,18 +286,24 @@ def main(opt):
                 eval_score = get_data_goodness_score(generated_string)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
+                if visualize:
+                    adversarial_G_score_logger.log(total_batch, eval_score)
 
 		# Train the discriminator
+        batch_G_loss = 0.0
         for a in range(D_STEPS):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
-
+                batch_G_loss = loss
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+        if visualize:
+            adversarial_D_loss_logger.log(total_batch, batch_G_loss)
 
-    plt.plot(gen_scores)
-    plt.show()
+    if not visualize:
+        plt.plot(gen_scores)
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -304,8 +313,11 @@ if __name__ == '__main__':
     parser.add_argument('--cuda', action='store', default=None, type=int)
     opt = parser.parse_args()
     if opt.cuda is not None and opt.cuda >= 0:
-        torch.cuda.set_device(opt.cuda)
-        opt.cuda = True if torch.cuda.is_available() else False
+        if torch.cuda.is_available():
+            torch.cuda.set_device(opt.cuda)
+            opt.cuda = True
+        else:
+            opt.cuda = False
 
     try:
         from eval.helper import *
