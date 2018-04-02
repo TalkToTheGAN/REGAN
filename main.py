@@ -33,7 +33,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'data/math_equation_data.txt'
