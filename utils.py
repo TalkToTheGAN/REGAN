@@ -57,7 +57,7 @@ def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
         loss.backward()
         optimizer.step()
         i += 1
-        # if i > 100:
+        # if i > 150:
         #     break
     data_iter.reset()
     return math.exp(total_loss / total_words)

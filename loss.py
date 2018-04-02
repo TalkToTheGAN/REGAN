@@ -166,6 +166,7 @@ class VarianceLoss(nn.Module):
             total_loss = total_loss.cuda()
         for j in range(bs):
             batch_j_loss = Variable(torch.zeros(1), requires_grad=True)
+            ref = 0
             if cuda:
                 batch_j_loss = total_loss.cuda()
             for i in range(len(grad[j])):

@@ -45,7 +45,7 @@ PRE_EPOCH_GEN = 1 if isDebug else 120
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
 TOTAL_BATCH = 30
 G_STEPS = 1 if isDebug else 1
@@ -254,12 +254,12 @@ def main(opt):
                         j_grads.append(-1*p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
-                print('1st contribution to the gradient')
-                print(grads[0][0][6])
-                print('2nd contribution to the gradient')
-                print(grads[1][0][6])
-                print('3rd contribution to the gradient')
-                print(grads[2][0][6])
+                # print('1st contribution to the gradient')
+                # print(grads[0][0][6])
+                # print('2nd contribution to the gradient')
+                # print(grads[1][0][6])
+                # print('3rd contribution to the gradient')
+                # print(grads[2][0][6])
                 # grads should be of length 3
                 # grads[0] should be of length BATCH SIZE
                 # 3.j
