@@ -120,9 +120,9 @@ def prob_to_seq(x, cuda=False):
         x_refactor = x_refactor.cuda()
 
     for i in range(seq_len):
-        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
-        # test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
-        # x_refactor[:,i] = test
+        # x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
+        x_refactor[:,i] = test
 
     return x_refactor
 
