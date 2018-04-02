@@ -124,7 +124,8 @@ class GANLoss(nn.Module):
         if cuda:
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
-            conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            #conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+            conditional_proba[j, int(samples[j, i])] = 1
             conditional_proba[j, :] = - (rewards[j] * conditional_proba[j, :]) / BATCH_SIZE 
         return conditional_proba
 
@@ -139,7 +140,8 @@ class GANLoss(nn.Module):
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
             for i in range(g_sequence_len):
-                conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+                #conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
+                conditional_proba[j, i, int(samples[j, i])] = 1
             conditional_proba[j, :, :] = - (rewards[j] * conditional_proba[j, :, :])
         #print(conditional_proba[0, :, :])
         for j in range(BATCH_SIZE):
@@ -159,15 +161,14 @@ class VarianceLoss(nn.Module):
 
     def forward(self, grad, cuda = False):
         bs = len(grad)
-        total_loss = Variable(torch.zeros(1), requires_grad=True)
+        ref = 0
+        for j in range(bs):
+            for i in range(len(grad[j])):
+                ref += torch.sum(grad[j][i]**2).item()
+        total_loss = np.array([ref/bs])
+        total_loss = Variable(torch.Tensor(total_loss), requires_grad=True)
+        print(total_loss)
         if cuda:
             total_loss = total_loss.cuda()
-        for j in range(bs):
-            batch_j_loss = Variable(torch.zeros(1), requires_grad=True)
-            if cuda:
-                batch_j_loss = total_loss.cuda()
-            for i in range(len(grad[j])):
-                batch_j_loss = torch.add(batch_j_loss, torch.sum(grad[j][i]**2))
-            total_loss = torch.add(total_loss, batch_j_loss)
-        return total_loss/bs
+        return total_loss
 

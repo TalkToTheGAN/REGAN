@@ -41,6 +41,7 @@ def generate_samples(model, batch_size, generated_num, output_file):
 def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
     total_loss = 0.
     total_words = 0.
+    i = 0
     for (data, target) in data_iter:
     	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
         data = Variable(data)
@@ -55,6 +56,9 @@ def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        i += 1
+        # if i > 150:
+        #     break
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
@@ -98,8 +102,6 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     z_tilde = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
         v = v.cuda()
-    '''z_tilde = -torch.log(-torch.log(v)/theta_prime - torch.log(v[:,b]))
-    z_tilde[:,b] = -torch.log(-torch.log(v[:,b]))'''
     #naive implementation
     for i in range(theta_prime.size(0)):
         v_b = v[i,int(b[i])]

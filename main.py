@@ -33,7 +33,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -41,13 +41,13 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 0 if isDebug else 120
+PRE_EPOCH_GEN = 1 if isDebug else 120
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 8
+TOTAL_BATCH = 30
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
@@ -105,6 +105,7 @@ def main(opt):
     if cuda:
         gen_criterion = gen_criterion.cuda()
     print('Pretrain with MLE ...')
+    pre_train_scores = []
     for epoch in range(PRE_EPOCH_GEN):
         loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
@@ -113,6 +114,7 @@ def main(opt):
         generated_string = eval_iter.convert_to_char(samples)
         print(generated_string)
         eval_score = get_data_goodness_score(generated_string)
+        pre_train_scores.append(eval_score)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
@@ -155,7 +157,7 @@ def main(opt):
         c_phi_hat_loss = c_phi_hat_loss.cuda()
     c_phi_hat_optm = optim.Adam(c_phi_hat.parameters())
 
-    gen_scores = []
+    gen_scores = pre_train_scores
     
     for total_batch in range(TOTAL_BATCH):
         ## Train the generator for one step
@@ -202,12 +204,13 @@ def main(opt):
             new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
             # 3.g new gradient loss for relax 
             batch_i_grads_1_ori = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+            # the above gradients are going to be modified when calling forward_reward_grads() again, so we have no choice but to clone them
             batch_i_grads_1 = []
             for i in range(BATCH_SIZE):
-            	i_grads = []
-            	for j in range(len(batch_i_grads_1_ori[i])):
-            		i_grads.append(batch_i_grads_1_ori[i][j].clone())
-            	batch_i_grads_1.append(i_grads)
+                i_grads = []
+                for j in range(len(batch_i_grads_1_ori[i])):
+                    i_grads.append(batch_i_grads_1_ori[i][j].clone())
+                batch_i_grads_1.append(i_grads)
             batch_i_grads_2 = gen_gan_loss.forward_reward_grads(samples, new_prob, c_phi_z_tilde_ori[:,1], generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
             # batch_i_grads should be of length BATCH SIZE of arrays of all the gradients
             # # 3.i
@@ -226,56 +229,61 @@ def main(opt):
                 #print(cond_prob[0])
                 #print(c_term[0])
                 if GD != "REINFORCE":
-                	cond_prob = torch.add(cond_prob, (-1)*c_term)
+                    cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
+            visu_grads = []
+            for p in generator.parameters():
+                visu_grads.append(p.grad)
+            print("Checking gradients:")
+            print(visu_grads[6])
             # 3.h - still training the generator, with the last two terms of the RELAX equation
             if GD != "REINFORCE":
-            	c_phi_z.backward(retain_graph=True)
-            	c_phi_z_tilde.backward(retain_graph=True)
+                c_phi_z.backward(retain_graph=True)
+                c_phi_z_tilde.backward(retain_graph=True)
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
             if GD == "RELAX":
-	            partial_grads = []
-	            for j in range(BATCH_SIZE):
-	                generator.zero_grad()
-	                c_phi_z_ori[j,1].backward(retain_graph=True)
-	                j_grads = []
-	                for p in generator.parameters():
-	                    j_grads.append(p.grad)
-	                partial_grads.append(j_grads)
-	            grads.append(partial_grads)
-	            # c_phi_z_tilde term
-	            partial_grads = []
-	            for j in range(BATCH_SIZE):
-	                generator.zero_grad()
-	                c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
-	                j_grads = []
-	                for p in generator.parameters():
-	                    j_grads.append(-1*p.grad)
-	                partial_grads.append(j_grads)
-	            grads.append(partial_grads)
-	            print('1st contribution to the gradient')
-	            print(grads[0][0][6])
-	            print('2nd contribution to the gradient')
-	            print(grads[1][0][6])
-	            print('3rd contribution to the gradient')
-	            print(grads[2][0][6])
-	            # grads should be of length 3
-	            # grads[0] should be of length BATCH SIZE
-	            # 3.j
-	            all_grads = grads[0]
-	            for i in range(len(grads[0])):
-	                for j in range(len(grads[0][i])):
-	                    all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
-	            # print('sum')
-	            # print(all_grads[0][6])
-	            # all_grads should be of length BATCH_SIZE
-	            c_phi_hat_optm.zero_grad()
-	            var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
-	            var_loss.backward()
-	            c_phi_hat_optm.step()
-	            print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+                partial_grads = []
+                for j in range(BATCH_SIZE):
+                    generator.zero_grad()
+                    c_phi_z_ori[j,1].backward(retain_graph=True)
+                    j_grads = []
+                    for p in generator.parameters():
+                        j_grads.append(p.grad)
+                    partial_grads.append(j_grads)
+                grads.append(partial_grads)
+                # c_phi_z_tilde term
+                partial_grads = []
+                for j in range(BATCH_SIZE):
+                    generator.zero_grad()
+                    c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
+                    j_grads = []
+                    for p in generator.parameters():
+                        j_grads.append(-1*p.grad)
+                    partial_grads.append(j_grads)
+                grads.append(partial_grads)
+                # print('1st contribution to the gradient')
+                # print(grads[0][0][6])
+                # print('2nd contribution to the gradient')
+                # print(grads[1][0][6])
+                # print('3rd contribution to the gradient')
+                # print(grads[2][0][6])
+                # grads should be of length 3
+                # grads[0] should be of length BATCH SIZE
+                # 3.j
+                all_grads = grads[0]
+                for i in range(len(grads[0])):
+                    for j in range(len(grads[0][i])):
+                        all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
+                # print('sum')
+                # print(all_grads[0][6])
+                # all_grads should be of length BATCH_SIZE
+                c_phi_hat_optm.zero_grad()
+                var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+                var_loss.backward()
+                c_phi_hat_optm.step()
+                print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
 
         # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
@@ -303,6 +311,8 @@ def main(opt):
 
     if not visualize:
         plt.plot(gen_scores)
+        plt.ylim((0, 13))
+        plt.title('{}_after_{}_epochs_of_pretraining'.format(GD, PRE_EPOCH_GEN))
         plt.show()
 
 
