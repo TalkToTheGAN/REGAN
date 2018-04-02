@@ -33,7 +33,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 GENERATED_NUM = 10000
 # related to data
 POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -41,13 +41,18 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120
+PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+CHECK_VARIANCE = False
+if GD == "RELAX":
+    CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_BATCH = 30
+TOTAL_EPOCHS = 0.2 # can be a decimal number
+TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
+print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
@@ -101,8 +106,8 @@ def main(opt):
         gen_criterion = gen_criterion.cuda()
     print('Pretrain with MLE ...')
     pre_train_scores = []
-    for epoch in range(PRE_EPOCH_GEN):
-        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, cuda)
+    for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
+        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
@@ -234,7 +239,7 @@ def main(opt):
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
-            if GD == "RELAX":
+            if CHECK_VARIANCE:
                 partial_grads = []
                 for j in range(BATCH_SIZE):
                     generator.zero_grad()

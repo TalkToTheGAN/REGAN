@@ -22,7 +22,7 @@ from annex_network import AnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 
-from main import g_sequence_len, BATCH_SIZE, VOCAB_SIZE
+from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -38,10 +38,13 @@ def generate_samples(model, batch_size, generated_num, output_file):
             fout.write('%s\n' % string)
     return Variable(torch.LongTensor(samples[0:batch_size]))
 
-def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
+def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, cuda=False):
     total_loss = 0.
     total_words = 0.
     i = 0
+    # allowing for pre-training on less than an epoch 
+    if PRE_EPOCH_GEN < 1:
+        num_iters = PRE_EPOCH_GEN * int(GENERATED_NUM / BATCH_SIZE)
     for (data, target) in data_iter:
     	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
         data = Variable(data)
@@ -57,8 +60,9 @@ def train_epoch(model, data_iter, criterion, optimizer, cuda=False):
         loss.backward()
         optimizer.step()
         i += 1
-        # if i > 150:
-        #     break
+        if PRE_EPOCH_GEN < 1:
+            if i > num_iters:
+                break
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
