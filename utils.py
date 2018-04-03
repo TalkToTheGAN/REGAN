@@ -39,13 +39,14 @@ def generate_samples(model, batch_size, generated_num, output_file):
             fout.write('%s\n' % string)
     return Variable(torch.LongTensor(samples[0:batch_size]))
 
-def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, cuda=False):
+def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cuda=False):
     total_loss = 0.
     total_words = 0.
     i = 0
-    # allowing for pre-training on less than an epoch 
-    if PRE_EPOCH_GEN < 1:
-        num_iters = PRE_EPOCH_GEN * int(GENERATED_NUM / BATCH_SIZE)
+    # allowing for pre-training on less than an epoch
+    dec = PRE_EPOCH_GEN - epoch 
+    if (dec > 0) and (dec < 1):
+        num_iters = dec * int(GENERATED_NUM / BATCH_SIZE)
     for (data, target) in data_iter:
     	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
         data = Variable(data)
@@ -61,7 +62,7 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, cuda=Fals
         loss.backward()
         optimizer.step()
         i += 1
-        if PRE_EPOCH_GEN < 1:
+        if (dec > 0) and (dec < 1):
             if i > num_iters:
                 break
     data_iter.reset()
@@ -221,6 +222,8 @@ def get_data_freq(all_data):
     for seq_index, seq_input in enumerate(all_data):
         for i in range(1,len(seq_input)):
             batchwise[char_to_ix.get(seq_input[i-1]),char_to_ix.get(seq_input[i])]+=1
+    sample_size = np.sum(batchwise)
+    batchwise = batchwise/sample_size
     
     return stat.entropy(batchwise.reshape(-1),groundtruth.reshape(-1))
     

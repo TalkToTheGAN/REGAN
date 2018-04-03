@@ -41,7 +41,7 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -50,7 +50,7 @@ CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 0.2 # can be a decimal number
+TOTAL_EPOCHS = 2 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -112,7 +112,7 @@ def main(opt):
     print('Pretrain with MLE ...')
     pre_train_scores = []
     for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
-        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, cuda)
+        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
@@ -140,7 +140,7 @@ def main(opt):
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
         for _ in range(PRE_ITER_DIS):
-            loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
+            loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, 1, cuda)
             print('Epoch [%d], loss: %f' % (epoch, loss))
             if visualize:
                 pretrain_D_loss_logger.log(epoch, loss)
@@ -316,7 +316,7 @@ def main(opt):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
-                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, cuda)
+                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
                 batch_G_loss = loss
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
         if visualize:
