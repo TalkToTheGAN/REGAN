@@ -5,7 +5,6 @@ import random
 import math
 
 import tqdm
-
 import numpy as np
 import torch
 
@@ -102,8 +101,8 @@ class DisDataIter(object):
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4,
-            '_': 5,
+            '/': 4
+            # '_': 5,
             # '\n': 6
         }
         with open(data_file, 'r') as f:
@@ -112,8 +111,8 @@ class DisDataIter(object):
         for line in lines:
             l = list(line)[:-1]
             l = [char_to_ix[s] for s in l]
-            if len(l) < 15:
-                l.append(5)
+            # if len(l) < 15:
+            #     l.append(5)
             lis.append(l)
         return lis
 

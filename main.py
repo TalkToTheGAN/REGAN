@@ -33,19 +33,19 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 128
+BATCH_SIZE = 100
 GENERATED_NUM = 10000
 # related to data
-POSITIVE_FILE = 'data/math_equation_data.txt'
+POSITIVE_FILE = 'data/math_equation_data_3.txt'
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 6
+VOCAB_SIZE = 5
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -59,20 +59,24 @@ D_EPOCHS = 1 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 15
+g_sequence_len = 3
 # Discriminator Parameters
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 #d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
-d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
+# d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+d_filter_sizes = [1, 2, 3]
+# d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
+d_num_filters = [100, 200, 200]
 d_dropout = 0.75
 d_num_class = 2
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
 DEFAULT_TEMPERATURE = 0.10
 # Annex network parameters
-c_filter_sizes = [1, 3, 5, 7, 9, 15]
-c_num_filters = [100, 200, 200, 200, 100, 100]
+# c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_filter_sizes = [1, 3]
+# c_num_filters = [100, 200, 200, 200, 100, 100]
+c_num_filters = [100, 200]
 #c_filter_sizes = [1, 3]
 #c_num_filters = [100, 200]
 
@@ -84,7 +88,7 @@ def main(opt):
     if visualize:
         pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
         pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
-        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Goodness Score'})
+        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f"Adversarial Batch G (GD: {GD}) Goodness Score"})
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
@@ -105,6 +109,7 @@ def main(opt):
     
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
+    # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5)  # Recreated npy file
 
     # Pretrain Generator using MLE
     gen_criterion = nn.NLLLoss(size_average=False)

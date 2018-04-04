@@ -51,6 +51,7 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
         num_iters = dec * int(GENERATED_NUM / BATCH_SIZE)
     for (data, target) in data_iter:
     	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
+        print(f"In train_epoch: i (batch number) = {i}")
         data = Variable(data)
         target = Variable(target)
         if cuda:
@@ -208,28 +209,17 @@ Per batch score
 def get_data_goodness_score(all_data):
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
     total_batch_score = 0
-    #for batch_index, batch_input in enumerate(all_data):
     for seq_index, seq_input in enumerate(all_data):
         total_batch_score += get_seq_goodness_score(seq_input)
+
     return total_batch_score/len(all_data)
 
 def get_seq_goodness_score(seq):
     # seq dim is a string of length len(seq)
-
     score = 0
-
-    for i in range(len(seq)-2):
-        j = i + 3
-        sliced_string = seq[i:j]
-        
-        if sliced_string[0] == 'x' and sliced_string[1]!='x' and sliced_string[2] == 'x':
+    for i in range(len(seq)):
+        if seq[0] == 'x' and seq[1] != 'x' and seq[2] == 'x':
             score += 1
-        elif sliced_string[0] != 'x' and sliced_string[1] =='x' and sliced_string[2] != 'x':
-            score+=1
-        elif sliced_string[0] == '_' and sliced_string[1] =='_':
-            score+=1
-        elif sliced_string[1] =='_' and sliced_string[2] == '_':
-            score+=1
 
     return score
 
@@ -241,11 +231,11 @@ def get_data_freq(all_data):
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4,
-            '_': 5,
+            '/': 4
+            # '_': 5,
             #'\n': 6
         }
-    batchwise = np.zeros((6,6))
+    batchwise = np.zeros((VOCAB_SIZE,VOCAB_SIZE))
     for seq_index, seq_input in enumerate(all_data):
         for i in range(1,len(seq_input)):
             batchwise[char_to_ix.get(seq_input[i-1]),char_to_ix.get(seq_input[i])]+=1
@@ -261,11 +251,11 @@ def get_char_freq(all_data):
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4,
-            '_': 5,
+            '/': 4
+            # '_': 5,
             #'\n': 6
         }
-    batchwise = np.zeros(6)
+    batchwise = np.zeros(VOCAB_SIZE)
     for seq_index, seq_input in enumerate(all_data):
         for i in range(1,len(seq_input)):
             batchwise[char_to_ix.get(seq_input[i])]+=1
