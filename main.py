@@ -41,7 +41,7 @@ NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 VOCAB_SIZE = 6
 # pre-training
-PRE_EPOCH_GEN = 0.5 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -82,7 +82,9 @@ def main(opt):
     if visualize:
         pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
         pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
-        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Goodness Score'})
+        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Goodness Score',
+                                                      'Y': '{0, 13}', 'X': '{0, TOTAL_BATCH}' })
+        G_text_logger = VisdomTextLogger(update_type='APPEND')
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
@@ -304,6 +306,7 @@ def main(opt):
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 if visualize:
+                    [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
 
 		# Train the discriminator
@@ -344,7 +347,7 @@ if __name__ == '__main__':
         from visdom import Visdom
         import torchnet as tnt
         from torchnet.engine import Engine
-        from torchnet.logger import VisdomPlotLogger, VisdomLogger
+        from torchnet.logger import VisdomPlotLogger, VisdomTextLogger, VisdomLogger
         canVisualize = True
     except ImportError as ie:
         eprint("Could not import vizualization imports. ")
