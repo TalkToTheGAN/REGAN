@@ -45,7 +45,7 @@ class NLLLoss(nn.Module):
 
 
 class GANLoss(nn.Module):
-    """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
+    """Reward-Refined NLLLoss Function for adversial training of Generator"""
     def __init__(self):
         super(GANLoss, self).__init__()
 
@@ -71,49 +71,49 @@ class GANLoss(nn.Module):
         loss =  -torch.sum(loss)
         return loss
     
-    def old_forward(self, GD, prob, target, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, cuda=False):
-        """
-        Forward function with implementation based on the original one.
-        """
-        N = target.size(0)
-        C = prob.size(1)
-        one_hot = torch.zeros((N, C))
-        if cuda:
-            one_hot = one_hot.cuda()
-        one_hot.scatter_(1, target.data.view((-1,1)), 1)
-        one_hot = one_hot.type(torch.ByteTensor)
-        one_hot = Variable(one_hot)
-        if cuda:
-            one_hot = one_hot.cuda()
-        loss = torch.masked_select(prob, one_hot)
-        loss = loss.view(BATCH_SIZE, g_sequence_len)
-        loss = torch.mean(loss, 1)
-        c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
-        c_phi_z_tilde = c_phi_z_tilde[:,1]
-        c_phi_z = c_phi_z[:,1]
-        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
-        loss =  - torch.sum(loss)
-        return loss
+    # def old_forward(self, GD, prob, target, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, cuda=False):
+    #     """
+    #     Forward function with implementation based on the original one.
+    #     """
+    #     N = target.size(0)
+    #     C = prob.size(1)
+    #     one_hot = torch.zeros((N, C))
+    #     if cuda:
+    #         one_hot = one_hot.cuda()
+    #     one_hot.scatter_(1, target.data.view((-1,1)), 1)
+    #     one_hot = one_hot.type(torch.ByteTensor)
+    #     one_hot = Variable(one_hot)
+    #     if cuda:
+    #         one_hot = one_hot.cuda()
+    #     loss = torch.masked_select(prob, one_hot)
+    #     loss = loss.view(BATCH_SIZE, g_sequence_len)
+    #     loss = torch.mean(loss, 1)
+    #     c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
+    #     c_phi_z_tilde = c_phi_z_tilde[:,1]
+    #     c_phi_z = c_phi_z[:,1]
+    #     loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+    #     loss =  - torch.sum(loss)
+    #     return loss
 
-    def forward(self, GD, prob, samples, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
-        """
-        Computes the Generator's loss in RELAX optimization setting. 
-
-        """
-        prob_temp = prob.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
-        new_prob = Variable(torch.zeros(BATCH_SIZE, g_sequence_len))
-        if cuda:
-            new_prob = new_prob.cuda()
-        for i in range(BATCH_SIZE):
-            for j in range(g_sequence_len):
-                new_prob[i,j] = prob_temp[i,j,int(samples[i,j])]
-        loss = torch.sum(new_prob, 1)
-        c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
-        c_phi_z_tilde = c_phi_z_tilde[:,1]
-        c_phi_z = c_phi_z[:,1]
-        loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
-        loss =  - torch.sum(loss)
-        return loss
+    # def forward(self, GD, prob, samples, reward, c_phi_hat, discriminator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
+    #     """
+    #     Computes the Generator's loss in RELAX optimization setting.
+    #
+    #     """
+    #     prob_temp = prob.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    #     new_prob = Variable(torch.zeros(BATCH_SIZE, g_sequence_len))
+    #     if cuda:
+    #         new_prob = new_prob.cuda()
+    #     for i in range(BATCH_SIZE):
+    #         for j in range(g_sequence_len):
+    #             new_prob[i,j] = prob_temp[i,j,int(samples[i,j])]
+    #     loss = torch.sum(new_prob, 1)
+    #     c_phi_z, c_phi_z_tilde = utils.c_phi_out(GD, c_phi_hat, prob, discriminator, cuda)
+    #     c_phi_z_tilde = c_phi_z_tilde[:,1]
+    #     c_phi_z = c_phi_z[:,1]
+    #     loss = loss * (reward - c_phi_z_tilde) + c_phi_z - c_phi_z_tilde
+    #     loss =  - torch.sum(loss)
+    #     return loss
 
     def forward_reward(self, i, samples, prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
         """
