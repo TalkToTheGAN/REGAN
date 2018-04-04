@@ -267,7 +267,7 @@ def get_char_freq(all_data):
         }
     batchwise = np.zeros(6)
     for seq_index, seq_input in enumerate(all_data):
-        for i in range(1,len(seq_input)):
+        for i in range(0,len(seq_input)):
             batchwise[char_to_ix.get(seq_input[i])]+=1
   
     return batchwise/(len(all_data)*len(all_data[0]))
