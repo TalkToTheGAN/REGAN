@@ -78,6 +78,20 @@ class DataLoader:
             self.lines = f.read().split('\n')
         self.total_lines = len(self.lines)
 
+    def frequency(self, file_path):
+        freq_arr = np.zeros((6,6))
+        with open(file_path, 'r') as f:
+            self.lines = f.read().split('\n')
+            chars = list(self.lines)
+    
+            for i in range(1,len(chars)):
+                freq_arr[self.char_to_ix.get(chars[i-1]),self.char_to_ix.get(chars[i])]+=1
+        np.save('freq_array.npy',freq_arr/np.sum(freq_arr))
+
+
+        self.total_lines = len(self.lines)
+
+
     def convert_to_char(self, data):
         string_arr = []
         for each_tensor in data:

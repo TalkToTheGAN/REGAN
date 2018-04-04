@@ -21,6 +21,7 @@ from discriminator import Discriminator
 from annex_network import AnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
+import scipy.stats as stat
 
 from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE
 
@@ -55,7 +56,7 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
         target = target.contiguous().view(-1)
         pred = model.forward(data)
         loss = criterion(pred, target)
-        total_loss += loss.item()
+        total_loss += loss.data[0]
         total_words += data.size(0) * data.size(1)
         optimizer.zero_grad()
         loss.backward()
@@ -204,3 +205,29 @@ def get_seq_goodness_score(seq):
             score+=1
 
     return score
+
+def get_data_freq(all_data):
+    # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
+    groundtruth = np.load('freq_array.npy')
+    char_to_ix = {
+            'x': 0,
+            '+': 1,
+            '-': 2,
+            '*': 3,
+            '/': 4,
+            '_': 5,
+            #'\n': 6
+        }
+    batchwise = np.zeros((6,6))
+    for seq_index, seq_input in enumerate(all_data):
+        for i in range(1,len(seq_input)):
+            batchwise[char_to_ix.get(seq_input[i-1]),char_to_ix.get(seq_input[i])]+=1
+    sample_size = np.sum(batchwise)
+    batchwise = batchwise/sample_size
+    
+    return stat.entropy(batchwise.reshape(-1),groundtruth.reshape(-1))
+    
+
+
+
+
