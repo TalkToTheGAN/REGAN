@@ -120,9 +120,11 @@ def main(opt):
         print(generated_string)
         eval_score = get_data_goodness_score(generated_string)
         kl_score = get_data_freq(generated_string)
+        freq_score = get_char_freq(generated_string)
         pre_train_scores.append(eval_score)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
         print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
+        print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
     # plt.plot(pre_train_scores)
@@ -304,9 +306,11 @@ def main(opt):
                 print(generated_string)
                 eval_score = get_data_goodness_score(generated_string)
                 kl_score = get_data_freq(generated_string)
+                freq_score = get_char_freq(generated_string)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
+                print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
                 if visualize:
                     adversarial_G_score_logger.log(total_batch, eval_score)
 
