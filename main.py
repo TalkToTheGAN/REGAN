@@ -68,6 +68,8 @@ d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
 d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
+DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
+DEFAULT_TEMPERATURE = 0.10
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
@@ -199,7 +201,7 @@ def main(opt):
             theta_prime = g_output_prob(prob)
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
-            c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
+            c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
             #print(c_phi_z_tilde_ori)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE

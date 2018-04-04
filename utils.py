@@ -13,6 +13,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
@@ -22,6 +23,7 @@ from annex_network import AnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 import scipy.stats as stat
+
 
 from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE
 
@@ -93,8 +95,29 @@ def g_output_prob(prob):
     theta_prime = softmax(prob)
     return theta_prime
 
-# performs a Gumbel-Softmax reparameterization of the input
+
+def softmax_with_temp(z, temperature, cuda=False):
+    '''
+    Peforms softmax with temperature.
+    :param z:
+    :param temperature:
+    :param cuda:
+    :return:
+    '''
+    soft_out = F.softmax(z / temperature, dim=1)
+    if cuda:
+        soft_out.cuda()
+
+    return soft_out
+
 def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
+    '''
+    Performs a Gumbel-Softmax reparameterization of the input
+    :param theta_prime:
+    :param VOCAB_SIZE:
+    :param cuda:
+    :return:
+    '''
     u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
     if cuda:
         u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
@@ -133,7 +156,7 @@ def prob_to_seq(x, cuda=False):
     return x_refactor
 
 #3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
-def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
+def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=None, cuda=False):
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
     # 3.c
@@ -142,24 +165,28 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda=False):
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
     if cuda:
         z_tilde = z_tilde.cuda()
-    z_gs = gumbel_softmax(z, VOCAB_SIZE, cuda)
-    z_tilde_gs = gumbel_softmax(z_tilde, VOCAB_SIZE, cuda)
-    # reshaping the inputs of the discriminator
-    z_gs = z_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
-    z_gs = prob_to_seq(z_gs, cuda)
-    z_gs = z_gs.type(torch.LongTensor)
-    if cuda:
-        z_gs = z_gs.cuda()
-    z_tilde_gs = z_tilde_gs.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
-    z_tilde_gs = prob_to_seq(z_tilde_gs, cuda)
-    z_tilde_gs = z_tilde_gs.type(torch.LongTensor)
-    if cuda:
-        z_tilde_gs = z_tilde_gs.cuda()
+
+    # Calculating f(sigmoid_lambda(z)) in Backprop paper.
+    type_ = torch.cuda.LongTensor if cuda else torch.LongTensor
+
+    f_lambda_z = softmax_with_temp(z, temperature, cuda=cuda)
+    f_lambda_z_tilde = softmax_with_temp(z_tilde, temperature, cuda=cuda)
+
+    f_lambda_z = f_lambda_z.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+    f_lambda_z_tilde = f_lambda_z_tilde.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
+
+    f_lambda_z = prob_to_seq(f_lambda_z, cuda)
+    f_lambda_z_tilde = prob_to_seq(f_lambda_z_tilde, cuda)
+    f_lambda_z = f_lambda_z.type(type_)
+    f_lambda_z_tilde = f_lambda_z_tilde.type(type_)
+
     if GD == 'REBAR':
-        return discriminator.forward(z_gs), discriminator.forward(z_tilde_gs)
+        assert eta is not None
+        return discriminator.forward(eta * f_lambda_z), discriminator.forward(eta * f_lambda_z_tilde)
+
     if (GD == 'RELAX') or (GD == "REINFORCE"):
-        c1=c_phi_hat.forward(z) + discriminator.forward(z_gs)
-        c2=c_phi_hat.forward(z_tilde) + discriminator.forward(z_tilde_gs)
+        c1=c_phi_hat.forward(z) + discriminator.forward(f_lambda_z)
+        c2=c_phi_hat.forward(z_tilde) + discriminator.forward(f_lambda_z_tilde)
         if cuda:
             c1=c1.cuda()
             c2=c2.cuda()
