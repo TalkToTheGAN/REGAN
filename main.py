@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from generator import Generator
-from discriminator import Discriminator
+from discriminator import Discriminator, LSTMDiscriminator
 from annex_network import AnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -22,6 +22,7 @@ from data_loader import DataLoader
 
 from utils import *
 from loss import *
+
 
 
 isDebug = True
@@ -68,6 +69,7 @@ d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
 d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
+d_lstm_hidden_dim = 32
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
 DEFAULT_TEMPERATURE = 0.10
 # Annex network parameters
@@ -90,10 +92,13 @@ def main(opt):
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
     n_gen = Variable(torch.Tensor([get_n_params(generator)]))
+    use_cuda = False
     if cuda:
         n_gen = n_gen.cuda()
+        use_cuda = True
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    # discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     if cuda:
         generator = generator.cuda()
