@@ -30,7 +30,7 @@ class Discriminator(nn.Module):
     def forward(self, x):
         """
         Args:
-            x: (batch_size * seq_len)
+            x: (batch_size , seq_len)
         """
         emb = self.emb(x).unsqueeze(1)  # batch_size * 1 * seq_len * emb_dim
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs]  # [batch_size * num_filter * length]
@@ -44,6 +44,51 @@ class Discriminator(nn.Module):
     def init_parameters(self):
         for param in self.parameters():
             param.data.uniform_(-0.05, 0.05)
+
+
+class LSTMDiscriminator(nn.Module):
+    """
+        Many to one LSTM
+    """
+    def __init__(self, num_classes, vocab_size, emb_dim, hidden_dim, use_cuda=False):
+        super(LSTMDiscriminator, self).__init__()
+        self.emb = nn.Embedding(vocab_size, emb_dim)
+        self.vocab_size = vocab_size
+        self.hidden_dim = hidden_dim
+        self.use_cuda = use_cuda
+        self.lstm = nn.LSTM(emb_dim, hidden_dim, batch_first=True)
+        self.lin = nn.Linear(hidden_dim, num_classes)
+        self.softmax = nn.LogSoftmax()
+        self.init_parameters()
+
+    """
+        x is output of Generator
+        x dimensions: (batch_size, seq_len, vocab_size)
+
+    """
+    def forward(self, x):
+        # x dim: batch_size x seq_len
+        emb = self.emb(x)                           # batch_size * seq_len * emb_dim
+        h0, c0 = self.init_hidden(emb.size(0))
+        output, (h, c) = self.lstm(emb, (h0, c0))  # output dim: (batch_size, seq_length, hidden_dim)
+
+        seq_len = output.size()[1]
+        batch_size = output.size()[0]
+        
+        output = self.lin(output.contiguous())[: , -1 , : ] # only need last lstm block's output
+        return self.softmax(output.contiguous()) # returning dim
+
+    def init_hidden(self, batch_size):
+        # noise distribution fed to G
+        h = Variable(torch.zeros((1, batch_size, self.hidden_dim)))
+        c = Variable(torch.zeros((1, batch_size, self.hidden_dim)))
+        if self.use_cuda:
+            h, c = h.cuda(), c.cuda()
+        return h, c
+
+    def init_parameters(self):
+        for param in self.parameters():
+            param.data.normal_(0, 0.02)
 
 
 

@@ -50,4 +50,46 @@ class AnnexNetwork(nn.Module):
         for param in self.parameters():
             param.data.normal_(0, 0.02)
 
+class LSTMAnnexNetwork(nn.Module):
+    """
+        Many to one LSTM
+    """
+    def __init__(self, num_classes, vocab_size, hidden_dim, batch_size, g_sequence_len, use_cuda=False):
+        super(LSTMAnnexNetwork, self).__init__()
+        self.vocab_size = vocab_size
+        self.hidden_dim = hidden_dim
+        self.use_cuda = use_cuda
+        self.g_sequence_len = g_sequence_len
+        self.batch_size = batch_size
+        self.lstm = nn.LSTM(vocab_size, hidden_dim, batch_first=True)
+        self.lin = nn.Linear(hidden_dim, num_classes)
+        self.softmax = nn.LogSoftmax()
+        self.init_parameters()
+    """
+        x is output of Generator
+        x dimensions: (batch_size, seq_len, vocab_size)
 
+    """
+    def forward(self, x):
+        # x dims (batch_size * seq_len , vocab_size)
+        x = x.view(self.batch_size, self.g_sequence_len, self.vocab_size) # (batch-size, seq_len, vocab_size)
+        h0, c0 = self.init_hidden(x.size(0))
+        output, (h, c) = self.lstm(x, (h0, c0))  # output dim: (batch_size, seq_length, hidden_dim)
+
+        seq_len = output.size()[1]
+        batch_size = output.size()[0]
+        
+        output = self.lin(output.contiguous())[: , -1 , : ] # only need last lstm block's output
+        return self.softmax(output.contiguous()) # returning dim
+
+    def init_hidden(self, batch_size):
+        # noise distribution fed to G
+        h = Variable(torch.zeros((1, batch_size, self.hidden_dim)))
+        c = Variable(torch.zeros((1, batch_size, self.hidden_dim)))
+        if self.use_cuda:
+            h, c = h.cuda(), c.cuda()
+        return h, c
+
+    def init_parameters(self):
+        for param in self.parameters():
+            param.data.normal_(0, 0.02)
