@@ -15,7 +15,7 @@ from torch.autograd import Variable
 
 from generator import Generator
 from discriminator import Discriminator, LSTMDiscriminator
-from annex_network import AnnexNetwork
+from annex_network import AnnexNetwork, LSTMAnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 from data_loader import DataLoader
@@ -75,6 +75,7 @@ DEFAULT_TEMPERATURE = 0.10
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
+c_lstm_hidden_dim = 32
 #c_filter_sizes = [1, 3]
 #c_num_filters = [100, 200]
 
@@ -99,7 +100,8 @@ def main(opt):
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     # discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
-    c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
+    # c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
+    c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
