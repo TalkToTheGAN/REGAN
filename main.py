@@ -36,13 +36,20 @@ random.seed(SEED)
 np.random.seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
+SPACES = True # What kind of data do you want to work on?
 # related to data
-POSITIVE_FILE = 'data/math_equation_data.txt'
+if SPACES:
+    POSITIVE_FILE = 'data/math_equation_data.txt'
+else:
+    POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 6
+if SPACES:
+    VOCAB_SIZE = 6
+else:
+    VOCAB_SIZE = 5
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -127,9 +134,9 @@ def main(opt):
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
         generated_string = eval_iter.convert_to_char(samples)
         print(generated_string)
-        eval_score = get_data_goodness_score(generated_string)
+        eval_score = get_data_goodness_score(generated_string, SPACES)
         kl_score = get_data_freq(generated_string)
-        freq_score = get_char_freq(generated_string)
+        freq_score = get_char_freq(generated_string, SPACES)
         pre_train_scores.append(eval_score)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
         print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
@@ -313,9 +320,9 @@ def main(opt):
                 eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
                 generated_string = eval_iter.convert_to_char(samples)
                 print(generated_string)
-                eval_score = get_data_goodness_score(generated_string)
+                eval_score = get_data_goodness_score(generated_string, SPACES)
                 kl_score = get_data_freq(generated_string)
-                freq_score = get_char_freq(generated_string)
+                freq_score = get_char_freq(generated_string, SPACES)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
