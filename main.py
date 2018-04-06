@@ -14,14 +14,15 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from generator import Generator
-from discriminator import Discriminator
-from annex_network import AnnexNetwork
+from discriminator import Discriminator, LSTMDiscriminator
+from annex_network import AnnexNetwork, LSTMAnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 from data_loader import DataLoader
 
 from utils import *
 from loss import *
+
 
 
 isDebug = True
@@ -35,11 +36,18 @@ random.seed(SEED)
 np.random.seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
+SPACES = True # What kind of data do you want to work on?
 # related to data
-POSITIVE_FILE = 'data/math_equation_data.txt'
+if SPACES:
+    POSITIVE_FILE = 'data/math_equation_data.txt'
+else:
+    POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 6
+if SPACES:
+    VOCAB_SIZE = 6
+else:
+    VOCAB_SIZE = 5
 # pre-training
 PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
@@ -68,9 +76,13 @@ d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
 d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
+d_lstm_hidden_dim = 32
+DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
+DEFAULT_TEMPERATURE = 0.10
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
+c_lstm_hidden_dim = 32
 #c_filter_sizes = [1, 3]
 #c_num_filters = [100, 200]
 
@@ -90,11 +102,15 @@ def main(opt):
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
     n_gen = Variable(torch.Tensor([get_n_params(generator)]))
+    use_cuda = False
     if cuda:
         n_gen = n_gen.cuda()
+        use_cuda = True
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    # discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
+    # c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
@@ -114,15 +130,19 @@ def main(opt):
     print('Pretrain with MLE ...')
     pre_train_scores = []
     for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
-        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, cuda)
+        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
         print('Epoch [%d] Model Loss: %f'% (epoch, loss))
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
         eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
         generated_string = eval_iter.convert_to_char(samples)
         print(generated_string)
-        eval_score = get_data_goodness_score(generated_string)
+        eval_score = get_data_goodness_score(generated_string, SPACES)
+        kl_score = get_data_freq(generated_string)
+        freq_score = get_char_freq(generated_string, SPACES)
         pre_train_scores.append(eval_score)
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
+        print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
+        print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
     # plt.plot(pre_train_scores)
@@ -140,7 +160,7 @@ def main(opt):
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
         dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
         for _ in range(PRE_ITER_DIS):
-            loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, cuda)
+            loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, 1, cuda)
             print('Epoch [%d], loss: %f' % (epoch, loss))
             if visualize:
                 pretrain_D_loss_logger.log(epoch, loss)
@@ -197,7 +217,7 @@ def main(opt):
             theta_prime = g_output_prob(prob)
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
-            c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, cuda)
+            c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
             #print(c_phi_z_tilde_ori)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
@@ -302,9 +322,13 @@ def main(opt):
                 eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
                 generated_string = eval_iter.convert_to_char(samples)
                 print(generated_string)
-                eval_score = get_data_goodness_score(generated_string)
+                eval_score = get_data_goodness_score(generated_string, SPACES)
+                kl_score = get_data_freq(generated_string)
+                freq_score = get_char_freq(generated_string, SPACES)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
+                print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
+                print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
                 if visualize:
                     [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
@@ -315,7 +339,7 @@ def main(opt):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
             dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
             for b in range(D_EPOCHS):
-                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, cuda)
+                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
                 batch_G_loss = loss
                 print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
         if visualize:
