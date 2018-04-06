@@ -45,7 +45,7 @@ PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -71,7 +71,7 @@ d_num_filters = [100, 200, 200]
 d_dropout = 0.75
 d_num_class = 2
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
-DEFAULT_TEMPERATURE = 0.10
+DEFAULT_TEMPERATURE = 0.67
 # Annex network parameters
 # c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_filter_sizes = [1, 3]
