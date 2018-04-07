@@ -78,7 +78,7 @@ d_dropout = 0.75
 d_num_class = 2
 d_lstm_hidden_dim = 32
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
-DEFAULT_TEMPERATURE = 0.10
+DEFAULT_TEMPERATURE = 0.9
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
