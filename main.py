@@ -49,7 +49,7 @@ if SPACES:
 else:
     VOCAB_SIZE = 5
 # pre-training
-PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
