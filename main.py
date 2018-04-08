@@ -92,10 +92,11 @@ def main(opt):
     cuda = opt.cuda; visualize = opt.visualize
     print(f"cuda = {cuda}, visualize = {opt.visualize}")
     if visualize:
-        pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
-        pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
+        if PRE_EPOCH_GEN > 0: pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
+        if PRE_EPOCH_DIS > 0: pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
         adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Goodness Score',
                                                       'Y': '{0, 13}', 'X': '{0, TOTAL_BATCH}' })
+        if CHECK_VARIANCE: G_variance_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Variance'})
         G_text_logger = VisdomTextLogger(update_type='APPEND')
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
@@ -318,6 +319,8 @@ def main(opt):
                 var_loss.backward()
                 c_phi_hat_optm.step()
                 print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+                if visualize:
+                    G_variance_logger.log((total_batch + it), var_loss.data[0])
 
         # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
