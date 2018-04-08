@@ -143,6 +143,9 @@ def main(opt):
         print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
         print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
         print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
+
+        torch.save(generator.state_dict(), f"checkpoints/{GD}_preTrainG_epoch_{epoch}.pth")
+
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
     # plt.plot(pre_train_scores)
@@ -329,6 +332,10 @@ def main(opt):
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
                 print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
+
+                #Checkpoint & Visualize
+                if total_batch == TOTAL_BATCH -1:
+                    torch.save(generator.state_dict(), f'checkpoints/{GD}_G_epoch_{TOTAL_EPOCHS}_batch_{total_batch}.pth')
                 if visualize:
                     [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
