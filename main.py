@@ -36,7 +36,7 @@ random.seed(SEED)
 np.random.seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
-SPACES = True # What kind of data do you want to work on?
+SPACES = False # What kind of data do you want to work on?
 # related to data
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -145,7 +145,7 @@ def main(opt):
         print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
         print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
 
-        torch.save(generator.state_dict(), f"checkpoints/{GD}_preTrainG_epoch_{epoch}.pth")
+        torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
 
         if visualize:
             pretrain_G_score_logger.log(epoch, eval_score)
@@ -337,8 +337,8 @@ def main(opt):
                 print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
 
                 #Checkpoint & Visualize
-                if total_batch == TOTAL_BATCH -1:
-                    torch.save(generator.state_dict(), f'checkpoints/{GD}_G_epoch_{TOTAL_EPOCHS}_batch_{total_batch}.pth')
+                if total_batch % 10 == 0 or total_batch == TOTAL_BATCH -1:
+                    torch.save(generator.state_dict(), f'checkpoints/{GD}_G_space_{SPACES}_pretrain_{PRE_EPOCH_GEN}_batch_{total_batch}.pth')
                 if visualize:
                     [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
