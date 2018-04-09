@@ -34,6 +34,7 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
+torch.manual_seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
