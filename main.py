@@ -36,7 +36,7 @@ random.seed(SEED)
 np.random.seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
-SPACES = True # What kind of data do you want to work on?
+SPACES = False # What kind of data do you want to work on?
 # related to data
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -55,7 +55,7 @@ PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -80,7 +80,7 @@ d_dropout = 0.75
 d_num_class = 2
 d_lstm_hidden_dim = 32
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
-DEFAULT_TEMPERATURE = 0.10
+DEFAULT_TEMPERATURE = 1
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
@@ -94,9 +94,12 @@ def main(opt):
     cuda = opt.cuda; visualize = opt.visualize
     print(f"cuda = {cuda}, visualize = {opt.visualize}")
     if visualize:
-        pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
-        pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
-        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch G Goodness Score'})
+        if PRE_EPOCH_GEN > 0: pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
+        if PRE_EPOCH_DIS > 0: pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
+        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Goodness Score',
+                                                      'Y': '{0, 13}', 'X': '{0, TOTAL_BATCH}' })
+        if CHECK_VARIANCE: G_variance_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Variance'})
+        G_text_logger = VisdomTextLogger(update_type='APPEND')
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
@@ -316,6 +319,8 @@ def main(opt):
                 var_loss.backward()
                 c_phi_hat_optm.step()
                 print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+                if visualize:
+                    G_variance_logger.log((total_batch + it), var_loss.data[0])
 
         # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
@@ -330,7 +335,12 @@ def main(opt):
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
                 print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
+
+                #Checkpoint & Visualize
+                if total_batch % 10 == 0 or total_batch == TOTAL_BATCH -1:
+                    torch.save(generator.state_dict(), f'checkpoints/{GD}_G_space_{SPACES}_pretrain_{PRE_EPOCH_GEN}_batch_{total_batch}.pth')
                 if visualize:
+                    [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
 
 		# Train the discriminator
@@ -371,7 +381,7 @@ if __name__ == '__main__':
         from visdom import Visdom
         import torchnet as tnt
         from torchnet.engine import Engine
-        from torchnet.logger import VisdomPlotLogger, VisdomLogger
+        from torchnet.logger import VisdomPlotLogger, VisdomTextLogger, VisdomLogger
         canVisualize = True
     except ImportError as ie:
         eprint("Could not import vizualization imports. ")
