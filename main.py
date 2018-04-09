@@ -55,12 +55,12 @@ PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
-CHECK_VARIANCE = False
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 0.1 # can be a decimal number
+TOTAL_EPOCHS = 4 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -318,11 +318,13 @@ def main(opt):
                 # all_grads should be of length BATCH_SIZE
                 c_phi_hat_optm.zero_grad()
                 var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+                true_variance = c_phi_hat_loss.forward_variance(all_grads, cuda)
                 var_loss.backward()
                 c_phi_hat_optm.step()
-                print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+                print(true_variance)
+                print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, true_variance[0]))
                 if visualize:
-                    G_variance_logger.log((total_batch + it), var_loss.data[0])
+                    G_variance_logger.log((total_batch + it), true_variance[0])
 
         # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
