@@ -49,7 +49,9 @@ if SPACES:
 else:
     VOCAB_SIZE = 5
 # pre-training
-PRE_EPOCH_GEN = 2.5 if isDebug else 120 # can be a decimal number
+MLE = False # If True, do pre-training, otherwise, load weights
+weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
+PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -123,36 +125,36 @@ def main(opt):
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
 
-    # Pretrain Generator using MLE
     gen_criterion = nn.NLLLoss(size_average=False)
     gen_optimizer = optim.Adam(generator.parameters())
     if cuda:
         gen_criterion = gen_criterion.cuda()
-    print('Pretrain with MLE ...')
+
+    # Pretrain Generator using MLE        
     pre_train_scores = []
-    for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
-        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
-        print('Epoch [%d] Model Loss: %f'% (epoch, loss))
-        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-        eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
-        generated_string = eval_iter.convert_to_char(samples)
-        print(generated_string)
-        eval_score = get_data_goodness_score(generated_string, SPACES)
-        kl_score = get_data_freq(generated_string)
-        freq_score = get_char_freq(generated_string, SPACES)
-        pre_train_scores.append(eval_score)
-        print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
-        print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
-        print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
-
-        torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
-
-        if visualize:
-            pretrain_G_score_logger.log(epoch, eval_score)
-    # plt.plot(pre_train_scores)
-    # plt.ylim((0,13))
-    # plt.title('Generation scores over MLE pre-training epochs')
-    # plt.show()
+    if MLE:    
+        print('Pretrain with MLE ...')
+        for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
+            loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
+            print('Epoch [%d] Model Loss: %f'% (epoch, loss))
+            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+            eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+            generated_string = eval_iter.convert_to_char(samples)
+            print(generated_string)
+            eval_score = get_data_goodness_score(generated_string, SPACES)
+            kl_score = get_data_freq(generated_string)
+            freq_score = get_char_freq(generated_string, SPACES)
+            pre_train_scores.append(eval_score)
+            print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
+            print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
+            print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
+            
+            torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
+            
+            if visualize:
+                pretrain_G_score_logger.log(epoch, eval_score)
+    else:
+        generator.load_state_dict(torch.load(weights_path))
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
