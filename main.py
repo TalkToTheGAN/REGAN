@@ -14,14 +14,15 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from generator import Generator
-from discriminator import Discriminator
-from annex_network import AnnexNetwork
+from discriminator import Discriminator, LSTMDiscriminator
+from annex_network import AnnexNetwork, LSTMAnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 from data_loader import DataLoader
 
 from utils import *
 from loss import *
+
 
 
 isDebug = True
@@ -33,24 +34,38 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-BATCH_SIZE = 100
+
+torch.manual_seed(SEED)
+BATCH_SIZE = 128
 GENERATED_NUM = 10000
+SPACES = False # What kind of data do you want to work on?
+SEQ_LEN = 3     # or 15
 # related to data
-POSITIVE_FILE = 'data/math_equation_data_3.txt'
+
+if SPACES:
+    POSITIVE_FILE = 'data/math_equation_data.txt'
+else:
+    POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
-VOCAB_SIZE = 5
+if SPACES:
+    VOCAB_SIZE = 6
+else:
+    VOCAB_SIZE = 5
 # pre-training
-PRE_EPOCH_GEN = 2 if isDebug else 120 # can be a decimal number
+MLE = False # If True, do pre-training, otherwise, load weights
+weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
+
+PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
 GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
-CHECK_VARIANCE = False
+CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 2 # can be a decimal number
+TOTAL_EPOCHS = 4 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -70,35 +85,44 @@ d_filter_sizes = [1, 2, 3]
 d_num_filters = [100, 200, 200]
 d_dropout = 0.75
 d_num_class = 2
+d_lstm_hidden_dim = 32
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
-DEFAULT_TEMPERATURE = 0.67
-# Annex network parameters
-# c_filter_sizes = [1, 3, 5, 7, 9, 15]
-c_filter_sizes = [1, 3]
-# c_num_filters = [100, 200, 200, 200, 100, 100]
-c_num_filters = [100, 200]
-#c_filter_sizes = [1, 3]
-#c_num_filters = [100, 200]
+DEFAULT_TEMPERATURE = 1
 
+# Annex network parameters
+c_filter_sizes = [1, 3, 5, 7, 9, 15]
+c_num_filters = [100, 200, 200, 200, 100, 100]
+c_lstm_hidden_dim = 32
+
+if SEQ_LEN == 3:
+    c_filter_sizes = [1, 3]
+    c_num_filters = [100, 200]
 
 def main(opt):
 
     cuda = opt.cuda; visualize = opt.visualize
     print(f"cuda = {cuda}, visualize = {opt.visualize}")
     if visualize:
-        pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
-        pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
-        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f"Adversarial Batch G (GD: {GD}) Goodness Score"})
+        if PRE_EPOCH_GEN > 0: pretrain_G_score_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train G Goodness Score'})
+        if PRE_EPOCH_DIS > 0: pretrain_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Pre-train D Loss'})
+        adversarial_G_score_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Goodness Score',
+                                                      'Y': '{0, 13}', 'X': '{0, TOTAL_BATCH}' })
+        if CHECK_VARIANCE: G_variance_logger = VisdomPlotLogger('line', opts={'title': f'Adversarial G {GD} Variance'})
+        G_text_logger = VisdomTextLogger(update_type='APPEND')
         adversarial_D_loss_logger = VisdomPlotLogger('line', opts={'title': 'Adversarial Batch D Loss'})
 
     # Define Networks
     generator = Generator(VOCAB_SIZE, g_emb_dim, g_hidden_dim, cuda)
     n_gen = Variable(torch.Tensor([get_n_params(generator)]))
+    use_cuda = False
     if cuda:
         n_gen = n_gen.cuda()
+        use_cuda = True
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    # discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
+    # c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
@@ -111,33 +135,36 @@ def main(opt):
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
     # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5)  # Recreated npy file
 
-    # Pretrain Generator using MLE
     gen_criterion = nn.NLLLoss(size_average=False)
     gen_optimizer = optim.Adam(generator.parameters())
     if cuda:
         gen_criterion = gen_criterion.cuda()
-    print('Pretrain with MLE ...')
+
+    # Pretrain Generator using MLE        
     pre_train_scores = []
-    for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
-        loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
-        print('Epoch [%d] Model Loss: %f'% (epoch, loss))
-        samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
-        eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
-        generated_string = eval_iter.convert_to_char(samples)
-        print(generated_string)
-        eval_score = get_data_goodness_score(generated_string)
-        kl_score = get_data_freq(generated_string)
-        freq_score = get_char_freq(generated_string)
-        pre_train_scores.append(eval_score)
-        print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
-        print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
-        print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
-        if visualize:
-            pretrain_G_score_logger.log(epoch, eval_score)
-    # plt.plot(pre_train_scores)
-    # plt.ylim((0,13))
-    # plt.title('Generation scores over MLE pre-training epochs')
-    # plt.show()
+    if MLE:    
+        print('Pretrain with MLE ...')
+        for epoch in range(int(np.ceil(PRE_EPOCH_GEN))):
+            loss = train_epoch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, cuda)
+            print('Epoch [%d] Model Loss: %f'% (epoch, loss))
+            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+            eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+            generated_string = eval_iter.convert_to_char(samples)
+            print(generated_string)
+            eval_score = get_data_goodness_score(generated_string, SPACES)
+            kl_score = get_data_freq(generated_string)
+            freq_score = get_char_freq(generated_string, SPACES)
+            pre_train_scores.append(eval_score)
+            print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
+            print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
+            print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
+            
+            torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
+            
+            if visualize:
+                pretrain_G_score_logger.log(epoch, eval_score)
+    else:
+        generator.load_state_dict(torch.load(weights_path))
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -301,9 +328,13 @@ def main(opt):
                 # all_grads should be of length BATCH_SIZE
                 c_phi_hat_optm.zero_grad()
                 var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+                true_variance = c_phi_hat_loss.forward_variance(all_grads, cuda)
                 var_loss.backward()
                 c_phi_hat_optm.step()
-                print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, var_loss.data[0]))
+                print(true_variance)
+                print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, true_variance[0]))
+                if visualize:
+                    G_variance_logger.log((total_batch + it), true_variance[0])
 
         # Evaluate the quality of the Generator outputs
         if total_batch % 1 == 0 or total_batch == TOTAL_BATCH - 1:
@@ -311,14 +342,19 @@ def main(opt):
                 eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
                 generated_string = eval_iter.convert_to_char(samples)
                 print(generated_string)
-                eval_score = get_data_goodness_score(generated_string)
+                eval_score = get_data_goodness_score(generated_string, SPACES)
                 kl_score = get_data_freq(generated_string)
-                freq_score = get_char_freq(generated_string)
+                freq_score = get_char_freq(generated_string, SPACES)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
                 print('Batch [%d] KL Score: %f' % (total_batch, kl_score))
                 print('Epoch [{}] Character distribution: {}'.format(total_batch, list(freq_score)))
+
+                #Checkpoint & Visualize
+                if total_batch % 10 == 0 or total_batch == TOTAL_BATCH -1:
+                    torch.save(generator.state_dict(), f'checkpoints/{GD}_G_space_{SPACES}_pretrain_{PRE_EPOCH_GEN}_batch_{total_batch}.pth')
                 if visualize:
+                    [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
 
 		# Train the discriminator
@@ -359,7 +395,7 @@ if __name__ == '__main__':
         from visdom import Visdom
         import torchnet as tnt
         from torchnet.engine import Engine
-        from torchnet.logger import VisdomPlotLogger, VisdomLogger
+        from torchnet.logger import VisdomPlotLogger, VisdomTextLogger, VisdomLogger
         canVisualize = True
     except ImportError as ie:
         eprint("Could not import vizualization imports. ")

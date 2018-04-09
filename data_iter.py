@@ -111,8 +111,10 @@ class DisDataIter(object):
         for line in lines:
             l = list(line)[:-1]
             l = [char_to_ix[s] for s in l]
-            # if len(l) < 15:
-            #     l.append(5)
+            # weird fix: sometimes, the generated sequence has length 14 and not 15...
+            if len(l) > 3 and len(l) < 15:
+                l.append(0)
+
             lis.append(l)
         return lis
 

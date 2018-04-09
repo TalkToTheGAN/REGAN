@@ -25,12 +25,12 @@ from data_iter import GenDataIter, DisDataIter
 import scipy.stats as stat
 
 
-from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE
+from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE, SEQ_LEN
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def generate_samples(model, batch_size, generated_num, output_file):
+def generate_samples(model, batch_size, generated_num, output_file, cuda=False):
     samples = []
     for _ in range(int(generated_num / batch_size)):
         sample = model.sample(batch_size, g_sequence_len).cpu().data.numpy().tolist()
@@ -39,7 +39,10 @@ def generate_samples(model, batch_size, generated_num, output_file):
         for sample in samples:
             string = ' '.join([str(s) for s in sample])
             fout.write('%s\n' % string)
-    return Variable(torch.LongTensor(samples[0:batch_size]))
+    gen_samples = Variable(torch.LongTensor(samples[0:batch_size]))
+    if cuda:
+        gen_samples = gen_samples.cuda()
+    return gen_samples
 
 def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cuda=False):
     total_loss = 0.
@@ -206,20 +209,43 @@ def get_n_params(model):
 '''
 Per batch score 
 '''
-def get_data_goodness_score(all_data):
+def get_data_goodness_score(all_data, SPACES=False):
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
     total_batch_score = 0
     for seq_index, seq_input in enumerate(all_data):
-        total_batch_score += get_seq_goodness_score(seq_input)
-
+        total_batch_score += get_seq_goodness_score(seq_input, SPACES)
     return total_batch_score/len(all_data)
 
-def get_seq_goodness_score(seq):
+def get_seq_goodness_score(seq, SPACES=False):
     # seq dim is a string of length len(seq)
-    score = 0
-    for i in range(len(seq)):
-        if seq[0] == 'x' and seq[1] != 'x' and seq[2] == 'x':
-            score += 1
+    if SPACES == True:
+
+        score = 0
+
+        for i in range(len(seq)-2):
+            j = i + 3
+            sliced_string = seq[i:j]
+            
+            if sliced_string[0] == 'x' and sliced_string[1]!='x' and sliced_string[2] == 'x':
+                score += 1
+            elif sliced_string[0] != 'x' and sliced_string[1] =='x' and sliced_string[2] != 'x':
+                score+=1
+            elif sliced_string[0] == '_' and sliced_string[1] =='_':
+                score+=1
+            elif sliced_string[1] =='_' and sliced_string[2] == '_':
+                score+=1
+
+    else:
+        # TODO: There might be issue here with SEQ_LEN = 3, please debug.
+        score = 0
+        for i in range(len(seq)-2):
+            j = i + 3
+            sliced_string = seq[i:j]
+            
+            if sliced_string[0] == 'x' and sliced_string[1]!='x' and sliced_string[2] == 'x':
+                score += 1
+            elif sliced_string[0] != 'x' and sliced_string[1] =='x' and sliced_string[2] != 'x':
+                score+=1
 
     return score
 
@@ -244,7 +270,7 @@ def get_data_freq(all_data):
     
     return stat.entropy(batchwise.reshape(-1),groundtruth.reshape(-1))
 
-def get_char_freq(all_data):
+def get_char_freq(all_data, SPACES):
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
     char_to_ix = {
             'x': 0,
@@ -255,9 +281,12 @@ def get_char_freq(all_data):
             # '_': 5,
             #'\n': 6
         }
-    batchwise = np.zeros(VOCAB_SIZE)
+    if SPACES == True:
+        batchwise = np.zeros(6)
+    else:
+        batchwise = np.zeros(5)
     for seq_index, seq_input in enumerate(all_data):
-        for i in range(1,len(seq_input)):
+        for i in range(0,len(seq_input)):
             batchwise[char_to_ix.get(seq_input[i])]+=1
   
     return batchwise/(len(all_data)*len(all_data[0]))
