@@ -49,8 +49,8 @@ if SPACES:
 else:
     VOCAB_SIZE = 5
 # pre-training
-MLE = True # If True, do pre-training, otherwise, load weights
-weights_path = "mle/2_epochs_8.578125_gen_score.pt"
+MLE = False # If True, do pre-training, otherwise, load weights
+weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
 PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
@@ -60,7 +60,7 @@ CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 0 # can be a decimal number
+TOTAL_EPOCHS = 0.1 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -148,9 +148,11 @@ def main(opt):
             print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
             print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
             print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
+            
+            torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
+            
             if visualize:
                 pretrain_G_score_logger.log(epoch, eval_score)
-        torch.save(generator.state_dict(), 'mle/{}_epochs_{}_gen_score.pt'.format(PRE_EPOCH_GEN, eval_score))
     else:
         generator.load_state_dict(torch.load(weights_path))
 
