@@ -249,9 +249,13 @@ def get_seq_goodness_score(seq, SPACES=False):
 
     return score
 
-def get_data_freq(all_data):
+def get_data_freq(all_data, seq_len=SEQ_LEN):
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
-    groundtruth = np.load('freq_array.npy')
+    if seq_len == 3:
+        groundtruth = np.load('freq_array_3.npy')
+    elif seq_len == 15:
+        groundtruth = np.load('freq_array.npy')
+
     char_to_ix = {
             'x': 0,
             '+': 1,

@@ -84,7 +84,7 @@ class DataLoader:
             self.lines = f.read().split('\n')
         self.total_lines = len(self.lines)
 
-    def frequency(self, file_path, vocab_size=5):
+    def frequency(self, file_path, vocab_size=5, seq_len=15):
         freq_arr = np.zeros((vocab_size,vocab_size))
         with open(file_path, 'r') as f:
             self.lines = f.read().split('\n')
@@ -92,7 +92,11 @@ class DataLoader:
     
             for i in range(1,len(chars)):
                 freq_arr[self.char_to_ix.get(chars[i-1]),self.char_to_ix.get(chars[i])]+=1
-        np.save('freq_array.npy',freq_arr/np.sum(freq_arr))
+
+        if seq_len == 15:
+            np.save('freq_array.npy',freq_arr/np.sum(freq_arr))
+        elif seq_len == 3:
+            np.save('freq_array_3.npy', freq_arr / np.sum(freq_arr))
 
 
         self.total_lines = len(self.lines)

@@ -46,6 +46,10 @@ if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
 else:
     POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
+
+if SEQ_LEN == 3:
+    POSITIVE_FILE = 'data/math_equation_data_3.txt'
+
 NEGATIVE_FILE = 'gene.data'
 EVAL_FILE = 'eval.data'
 if SPACES:
@@ -65,7 +69,7 @@ CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 4 # can be a decimal number
+TOTAL_EPOCHS = 3 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -133,7 +137,7 @@ def main(opt):
     
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
-    # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5)  # Recreated npy file
+    # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5, seq_len=SEQ_LEN)  # Recreated npy file
 
     gen_criterion = nn.NLLLoss(size_average=False)
     gen_optimizer = optim.Adam(generator.parameters())

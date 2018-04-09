@@ -1,12 +1,13 @@
 # -*- coding:utf-8 -*-
 
-import os
+import os, sys
 import random
 import math
 
 import tqdm
 import numpy as np
 import torch
+
 
 class GenDataIter(object):
     """ Toy data iter to load digits"""
@@ -86,6 +87,7 @@ class DisDataIter(object):
     def next(self):
         if self.idx >= self.data_num:
             raise StopIteration
+        print(f"self.idx = {self.idx}")
         index = self.indices[self.idx:self.idx+self.batch_size]
         pairs = [self.pairs[i] for i in index]
         data = [p[0] for p in pairs]
