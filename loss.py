@@ -160,6 +160,38 @@ class VarianceLoss(nn.Module):
         super(VarianceLoss, self).__init__()
 
     def forward(self, grad, cuda = False):
+        # bs = len(grad)
+        # square_sum = 0
+        # normal_sum = 0
+        # print("GRAD SHAPE----------------", len(grad))
+        # print('--------------------------', len(grad[0]))
+        # print('--------------------------')
+        # #print(grad[0][1].size())
+        # #print(grad[0][1][0])
+        # #print(grad[0][1][0].size())
+        # for j in range(bs):
+        #     for i in range(len(grad[j])):
+        #         # print(grad[j][i].shape)
+        #         # print(grad[j][i])
+        #         square_sum += (torch.sum(grad[j][i]**2).data[0])/bs
+        #         normal_sum += (torch.sum(grad[j][i]).data[0])/bs
+        #         # print(square_sum)
+        #         # print(normal_sum)
+
+        # print('------------------------------------')
+        # print(square_sum)
+        # print(normal_sum)
+        # var_2nd_term = (normal_sum)**2
+        # print("Variance:", square_sum - var_2nd_term)
+        # total_loss = np.array([square_sum])
+        # total_loss = Variable(torch.Tensor(total_loss), requires_grad=True)
+        # total_variance = total_loss.data[0] - var_2nd_term
+        # # print(total_loss.data[0])
+        # # print(var_2nd_term)
+        # if cuda:
+        #     total_loss = total_loss.cuda()
+        #     total_variance = total_variance.cuda()
+        # return total_loss, total_variance
         bs = len(grad)
         ref = 0
         for j in range(bs):
@@ -171,4 +203,23 @@ class VarianceLoss(nn.Module):
         if cuda:
             total_loss = total_loss.cuda()
         return total_loss
+
+    def forward_variance(self, grad, cuda=False):
+
+        bs = len(grad)
+        n_layers = len(grad[0])
+        square_term = torch.zeros((grad[0][n_layers-1].size()))
+        normal_term = torch.zeros((grad[0][n_layers-1].size()))
+        if cuda:
+            square_term = square_term.cuda()
+            normal_term = normal_term.cuda()
+        for j in range(bs):
+            square_term = torch.add(square_term, grad[j][n_layers-1]**2)
+            normal_term = torch.add(normal_term, grad[j][n_layers-1])
+        square_term /= bs
+        normal_term /= bs
+        normal_term = normal_term ** 2
+        return square_term - normal_term
+
+
 
