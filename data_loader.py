@@ -66,7 +66,7 @@ class DataLoader:
             if i == end_index-1:
                 print('break here')
             target_data = input_data[1:]
-            target_data.append(0)
+            target_data.append(random.choice([1,2,3,4]))
 
             # print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
 
