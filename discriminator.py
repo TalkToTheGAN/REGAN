@@ -50,13 +50,13 @@ class LSTMDiscriminator(nn.Module):
     """
         Many to one LSTM
     """
-    def __init__(self, num_classes, vocab_size, emb_dim, hidden_dim, use_cuda=False):
+    def __init__(self, num_classes, vocab_size, hidden_dim, use_cuda=False):
         super(LSTMDiscriminator, self).__init__()
-        self.emb = nn.Embedding(vocab_size, emb_dim)
+        # self.emb = nn.Embedding(vocab_size, emb_dim)
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_dim
         self.use_cuda = use_cuda
-        self.lstm = nn.LSTM(emb_dim, hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(vocab_size, hidden_dim, batch_first=True)
         self.lin = nn.Linear(hidden_dim, num_classes)
         self.softmax = nn.LogSoftmax()
         self.init_parameters()
@@ -67,16 +67,25 @@ class LSTMDiscriminator(nn.Module):
 
     """
     def forward(self, x):
-        # x dim: batch_size x seq_len
-        emb = self.emb(x)                           # batch_size * seq_len * emb_dim
-        h0, c0 = self.init_hidden(emb.size(0))
-        output, (h, c) = self.lstm(emb, (h0, c0))  # output dim: (batch_size, seq_length, hidden_dim)
-
+        # input x is now batch_size x seq_len x vocab_size
+        
+        h0, c0 = self.init_hidden(x.size(0))
+        output, (h, c) = self.lstm(x, (h0, c0))  # output dim: (batch_size, seq_length, hidden_dim)
         seq_len = output.size()[1]
         batch_size = output.size()[0]
-        
         output = self.lin(output.contiguous())[: , -1 , : ] # only need last lstm block's output
         return self.softmax(output.contiguous()) # returning dim
+
+        # # x dim: batch_size x seq_len
+        # emb = self.emb(x)                           # batch_size * seq_len * emb_dim
+        # h0, c0 = self.init_hidden(emb.size(0))
+        # output, (h, c) = self.lstm(emb, (h0, c0))  # output dim: (batch_size, seq_length, hidden_dim)
+
+        # seq_len = output.size()[1]
+        # batch_size = output.size()[0]
+        
+        # output = self.lin(output.contiguous())[: , -1 , : ] # only need last lstm block's output
+        # return self.softmax(output.contiguous()) # returning dim
 
     def init_hidden(self, batch_size):
         # noise distribution fed to G
