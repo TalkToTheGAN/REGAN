@@ -58,12 +58,12 @@ else:
     VOCAB_SIZE = 5
 # pre-training
 MLE = False # If True, do pre-training, otherwise, load weights
-weights_path = "checkpoints/MLE_space_False_length_15_preTrainG_epoch_1.pth"
+weights_path = "checkpoints/MLE_space_False_length_15_preTrainG_epoch_2.pth"
 PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REBAR" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -125,7 +125,7 @@ def main(opt):
     # discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
     discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    #c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
+    # c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
@@ -231,6 +231,7 @@ def main(opt):
             rewards = Variable(torch.Tensor(rewards))
             if cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
+            rewards = torch.exp(rewards)
             # rewards has size (BS)
             prob = generator.forward(inputs)
             # prob has size (BS*sequence_len, VOCAB_SIZE)
@@ -239,14 +240,18 @@ def main(opt):
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
-            # print(c_phi_z_ori)
+            c_phi_z_ori = torch.exp(c_phi_z_ori)
+            c_phi_z_tilde_ori = torch.exp(c_phi_z_tilde_ori)
+            # print('aaaaaaaaaaaaaaaaaaaaaaa')
+            # print(rewards)
+            # print('bbbbbbbbbbbbbbbbbbbbb')
             # print(c_phi_z_tilde_ori)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
             if opt.cuda:
                 c_phi_z = c_phi_z.cuda()
                 c_phi_z_tilde = c_phi_z_tilde.cuda()
-                c_phi_hat=c_phi_hat.cuda()
+                c_phi_hat = c_phi_hat.cuda()
             # 3.i
             grads = []
             first_term_grads = []
@@ -268,9 +273,10 @@ def main(opt):
             # batch_i_grads should be of length BATCH SIZE of arrays of all the gradients
             # # 3.i
             batch_grads = batch_i_grads_1
-            for i in range(len(batch_i_grads_1)):
-                for j in range(len(batch_i_grads_1[i])):
-                    batch_grads[i][j] = torch.add(batch_grads[i][j], (-1)*batch_i_grads_2[i][j])
+            if GD != "REINFORCE":
+                for i in range(len(batch_i_grads_1)):
+                    for j in range(len(batch_i_grads_1[i])):
+                        batch_grads[i][j] = torch.add(batch_grads[i][j], (-1)*batch_i_grads_2[i][j])
             # batch_grads should be of length BATCH SIZE
             grads.append(batch_grads)
             # NOW, TRAIN THE GENERATOR
@@ -284,16 +290,15 @@ def main(opt):
                 if GD != "REINFORCE":
                     cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
-            visu_grads = []
-            for p in generator.parameters():
-                visu_grads.append(p.grad)
-            print("Checking gradients:")
-            print(visu_grads[6])
+            # visu_grads = []
+            # for p in generator.parameters():
+            #     visu_grads.append(p.grad.clone())
+            # print("Checking gradients:")
+            # print(visu_grads[6])
             # 3.h - still training the generator, with the last two terms of the RELAX equation
             if GD != "REINFORCE":
                 c_phi_z.backward(retain_graph=True)
                 c_phi_z_tilde.backward(retain_graph=True)
-
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
@@ -304,8 +309,7 @@ def main(opt):
                     c_phi_z_ori[j,1].backward(retain_graph=True)
                     j_grads = []
                     for p in generator.parameters():
-                        # print(p.grad)
-                        j_grads.append(p.grad)
+                        j_grads.append(p.grad.clone())
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
                 # c_phi_z_tilde term
@@ -316,7 +320,7 @@ def main(opt):
                     j_grads = []
                     for p in generator.parameters():
                         #print(p.grad)
-                        j_grads.append(-1*p.grad)
+                        j_grads.append(-1*p.grad.clone())
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
                 print('1st contribution to the gradient')
@@ -329,14 +333,15 @@ def main(opt):
                 #grads[0] should be of length BATCH SIZE
                 # 3.j
                 all_grads = grads[0]
-                for i in range(len(grads[0])):
-                    for j in range(len(grads[0][i])):
-                        all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
+                if GD != "REINFORCE":
+                    for i in range(len(grads[0])):
+                        for j in range(len(grads[0][i])):
+                            all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
                 # print('sum')
                 # print(all_grads[0][6])
                 # all_grads should be of length BATCH_SIZE
                 c_phi_hat_optm.zero_grad()
-                var_loss = c_phi_hat_loss.forward(all_grads, cuda)/n_gen
+                var_loss = c_phi_hat_loss.forward(all_grads, cuda)  #/n_gen
                 true_variance = c_phi_hat_loss.forward_variance(all_grads, cuda)
                 var_loss.backward()
                 c_phi_hat_optm.step()

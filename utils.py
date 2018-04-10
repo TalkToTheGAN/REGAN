@@ -206,8 +206,6 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
 
     f_lambda_z = softmax_with_temp(z, temperature, cuda=cuda)
     f_lambda_z_tilde = softmax_with_temp(z_tilde, temperature, cuda=cuda)
-    print(f_lambda_z)
-    print(f_lambda_z_tilde)
 
     f_lambda_z = f_lambda_z.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
     f_lambda_z_tilde = f_lambda_z_tilde.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
@@ -229,8 +227,8 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
         return eta*discriminator.forward(f_lambda_z), eta*discriminator.forward(f_lambda_z_tilde)
 
     if (GD == 'RELAX'):
-        c1=c_phi_hat.forward(z) + discriminator.forward(f_lambda_z)
-        c2=c_phi_hat.forward(z_tilde) + discriminator.forward(f_lambda_z_tilde)
+        c1 = torch.add(c_phi_hat.forward(z), discriminator.forward(f_lambda_z))
+        c2 = torch.add(c_phi_hat.forward(z_tilde), discriminator.forward(f_lambda_z_tilde))
         if cuda:
             c1=c1.cuda()
             c2=c2.cuda()

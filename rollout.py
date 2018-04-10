@@ -32,8 +32,8 @@ class Rollout(object):
         batch_size = x.size(0)
         seq_len = x.size(1)
 
-        samples = self.own_model.sample(batch_size, seq_len, x)
-        one_hot_samples = convert_to_one_hot(samples, VOCAB_SIZE, cuda)
+        # samples = self.own_model.sample(batch_size, seq_len, x)
+        one_hot_samples = convert_to_one_hot(x, VOCAB_SIZE, cuda)
         pred = discriminator(one_hot_samples)
         pred = pred.cpu().data[:,1].numpy()
         
