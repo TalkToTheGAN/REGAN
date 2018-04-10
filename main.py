@@ -63,7 +63,7 @@ PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -415,7 +415,7 @@ def main(opt):
             #         batch_G_loss = loss
             print('Batch [{}] Discriminator Loss at step and epoch {}: {}'.format(total_batch, b, D_loss.data[0]))
         if visualize:
-            adversarial_D_loss_logger.log(total_batch, batch_G_loss)
+            adversarial_D_loss_logger.log(total_batch, D.loss.data[0])
 
     if not visualize:
         plt.plot(gen_scores)
