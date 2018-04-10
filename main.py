@@ -58,7 +58,8 @@ else:
     VOCAB_SIZE = 5
 # pre-training
 MLE = False # If True, do pre-training, otherwise, load weights
-weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0.pth"
+weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0.pth" if SEQ_LEN == 3 else \
+    "MLE_space_False_length_15_preTrainG_epoch_2.pth"
 PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
