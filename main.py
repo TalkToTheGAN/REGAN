@@ -40,7 +40,7 @@ torch.manual_seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
-SEQ_LEN = 3     # or 15
+SEQ_LEN = 15     # or 15
 # related to data
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -57,9 +57,9 @@ if SPACES:
 else:
     VOCAB_SIZE = 5
 # pre-training
-MLE = True # If True, do pre-training, otherwise, load weights
-weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
-PRE_EPOCH_GEN = 10 if isDebug else 120 # can be a decimal number
+MLE = False # If True, do pre-training, otherwise, load weights
+weights_path = "checkpoints/MLE_space_False_length_15_preTrainG_epoch_1.pth"
+PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -162,7 +162,7 @@ def main(opt):
             print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
             print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
             
-            torch.save(generator.state_dict(), f"checkpoints/{GD}_space_{SPACES}_preTrainG_epoch_{epoch}.pth")
+            torch.save(generator.state_dict(), f"checkpoints/MLE_space_{SPACES}_length_{SEQ_LEN}_preTrainG_epoch_{epoch}.pth")
             
             if visualize:
                 pretrain_G_score_logger.log(epoch, eval_score)
@@ -319,14 +319,14 @@ def main(opt):
                         j_grads.append(-1*p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
-                # print('1st contribution to the gradient')
-                # print(grads[0][0][6])
-                # print('2nd contribution to the gradient')
-                # print(grads[1][0][6])
-                # print('3rd contribution to the gradient')
-                # print(grads[2][0][6])
-                # grads should be of length 3
-                # grads[0] should be of length BATCH SIZE
+                print('1st contribution to the gradient')
+                print(grads[0][0][6])
+                print('2nd contribution to the gradient')
+                print(grads[1][0][6])
+                print('3rd contribution to the gradient')
+                print(grads[2][0][6])
+                #grads should be of length 3
+                #grads[0] should be of length BATCH SIZE
                 # 3.j
                 all_grads = grads[0]
                 for i in range(len(grads[0])):

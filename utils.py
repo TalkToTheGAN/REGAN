@@ -218,11 +218,17 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
     f_lambda_z = f_lambda_z.type(type_)
     f_lambda_z_tilde = f_lambda_z_tilde.type(type_)
 
+    if GD == "REINFORCE":
+        if cuda:
+            return Variable(torch.zeros((BATCH_SIZE,2)), requires_grad=True).cuda(), Variable(torch.zeros((BATCH_SIZE,2)), requires_grad=True).cuda()
+        else:
+            return Variable(torch.zeros((BATCH_SIZE,2)), requires_grad=True), Variable(torch.zeros((BATCH_SIZE,2)), requires_grad=True)
+
     if GD == 'REBAR':
         assert eta is not None
         return eta*discriminator.forward(f_lambda_z), eta*discriminator.forward(f_lambda_z_tilde)
 
-    if (GD == 'RELAX') or (GD == "REINFORCE"):
+    if (GD == 'RELAX'):
         c1=c_phi_hat.forward(z) + discriminator.forward(f_lambda_z)
         c2=c_phi_hat.forward(z_tilde) + discriminator.forward(f_lambda_z_tilde)
         if cuda:
