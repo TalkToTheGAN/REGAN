@@ -27,7 +27,7 @@ def convert_to_one_hot(data, vocab_size, cuda):
     one_hot = Variable(torch.zeros((batch_size, vocab_size)).long())
 
     if(cuda):
-        data = data.cuda()
+        # data = data.cuda()
         samples = samples.cuda()
         one_hot = one_hot.cuda()
 
@@ -36,6 +36,7 @@ def convert_to_one_hot(data, vocab_size, cuda):
         one_hot = Variable(torch.zeros((seq_len, vocab_size)).long())
         if cuda:
             one_hot = one_hot.cuda()
-        samples[i] = one_hot.scatter_(1, x, 1)
+            x = x.cuda()
+        samples[i] = one_hot.scatter_(1, x, 1.0)
 
     return samples

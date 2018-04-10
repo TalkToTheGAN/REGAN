@@ -21,7 +21,6 @@ from torch.distributions import Categorical
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
-from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 import scipy.stats as stat
 
@@ -115,7 +114,7 @@ def softmax_with_temp(z, temperature, cuda=False):
     :param cuda:
     :return:
     '''
-    soft_out = Variable(F.softmax(z / temperature, dim=1))
+    soft_out = F.softmax(z / temperature, dim=1)
     if cuda:
         soft_out = soft_out.cuda()
 
@@ -152,6 +151,28 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
+
+def sample_one_hot(theta_prime, batch_size, seq_len, vocab_size, use_cuda):
+
+    # input theta_prime dims = (batch_size * seq_len) x vocab_size
+    theta_prime = theta_prime.view(batch_size, seq_len, vocab_size)
+    samples = Variable(torch.Tensor(seq_len, batch_size, vocab_size), requires_grad = True)
+
+    if(use_cuda):
+        samples = samples.cuda()
+
+    theta_prime = theta_prime.view(seq_len, batch_size, vocab_size)
+    for i in range(seq_len):
+        x = theta_prime[i].multinomial(1)
+        one_hot = Variable(torch.zeros((batch_size, vocab_size)).long(), requires_grad = True)
+        if use_cuda:
+            one_hot = one_hot.cuda()
+        samples[i] = one_hot.scatter_(1, x, 1)
+
+    samples = samples.view(batch_size, seq_len, vocab_size)
+    return samples
+
+
 def prob_to_seq(x, cuda=False):
     batch_size = x.size(0); seq_len = x.size(1); edim = x.size(2)
     print(seq_len)
@@ -171,14 +192,17 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
     # 3.c
-    value, b = torch.max(torch.transpose(z,0,1),0)
+    # value, b = torch.max(torch.transpose(z,0,1),0)
+    b = sample_one_hot(theta_prime, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
+    b = b.view(BATCH_SIZE*g_sequence_len, VOCAB_SIZE)
+    _, b = torch.max(torch.transpose(b, 0, 1), 0)
     # 3.d
     z_tilde = categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda)
     if cuda:
         z_tilde = z_tilde.cuda()
 
     # Calculating f(sigmoid_lambda(z)) in Backprop paper.
-    type_ = torch.cuda.LongTensor if cuda else torch.LongTensor
+    type_ = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
     f_lambda_z = softmax_with_temp(z, temperature, cuda=cuda)
     f_lambda_z_tilde = softmax_with_temp(z_tilde, temperature, cuda=cuda)
@@ -188,8 +212,9 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
     f_lambda_z = f_lambda_z.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
     f_lambda_z_tilde = f_lambda_z_tilde.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
 
-    f_lambda_z = prob_to_seq(f_lambda_z, cuda)
-    f_lambda_z_tilde = prob_to_seq(f_lambda_z_tilde, cuda)
+    # f_lambda_z = prob_to_seq(f_lambda_z, cuda)
+    # f_lambda_z_tilde = prob_to_seq(f_lambda_z_tilde, cuda)
+
     f_lambda_z = f_lambda_z.type(type_)
     f_lambda_z_tilde = f_lambda_z_tilde.type(type_)
 

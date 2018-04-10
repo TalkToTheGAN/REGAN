@@ -68,7 +68,7 @@ class DataLoader:
             target_data = input_data[1:]
             target_data.append(0)
 
-            print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
+            # print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
 
             all_input_data.append(input_data)
             all_target_data.append(target_data)

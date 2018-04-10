@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from generator import Generator
-from discriminator import Discriminator, LSTMDiscriminator
+from discriminator import LSTMDiscriminator
 from annex_network import AnnexNetwork, LSTMAnnexNetwork
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
@@ -22,6 +22,7 @@ from data_loader import DataLoader
 
 from utils import *
 from loss import *
+from helpers import *
 
 
 
@@ -58,7 +59,7 @@ else:
 # pre-training
 MLE = True # If True, do pre-training, otherwise, load weights
 weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
-PRE_EPOCH_GEN = 2.5 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 10 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
@@ -121,8 +122,8 @@ def main(opt):
         n_gen = n_gen.cuda()
         use_cuda = True
     print(n_gen)
-    discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
-    #discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
+    # discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
     #c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
@@ -197,6 +198,8 @@ def main(opt):
         gen_criterion = gen_criterion.cuda()
     
     dis_criterion = nn.NLLLoss(size_average=False)
+    dis_criterion_bce = nn.BCELoss()
+
     dis_optimizer = optim.Adam(discriminator.parameters())
     if cuda:
         dis_criterion = dis_criterion.cuda()
@@ -224,7 +227,7 @@ def main(opt):
                 inputs=inputs.cuda()
                 targets=targets.cuda()
             # calculate the reward
-            rewards = rollout.get_reward(samples, discriminator)
+            rewards = rollout.get_reward(samples, discriminator, VOCAB_SIZE, cuda)
             rewards = Variable(torch.Tensor(rewards))
             if cuda:
                 rewards = torch.exp(rewards.cuda()).contiguous().view((-1,))
@@ -233,14 +236,11 @@ def main(opt):
             # prob has size (BS*sequence_len, VOCAB_SIZE)
             # 3.a
             theta_prime = g_output_prob(prob)
-            print(theta_prime)
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
-            print(c_phi_z_ori)
-            print(c_phi_z_tilde_ori)
-            c_phi_z_ori = Variable(c_phi_z_ori, requires_grad=True)
-            c_phi_z_tilde_ori = Variable(c_phi_z_tilde_ori, requires_grad=True)
+            # print(c_phi_z_ori)
+            # print(c_phi_z_tilde_ori)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
             if opt.cuda:
@@ -293,6 +293,7 @@ def main(opt):
             if GD != "REINFORCE":
                 c_phi_z.backward(retain_graph=True)
                 c_phi_z_tilde.backward(retain_graph=True)
+
             gen_gan_optm.step()
             # 3.i
             # c_phi_z term
@@ -300,11 +301,10 @@ def main(opt):
                 partial_grads = []
                 for j in range(BATCH_SIZE):
                     generator.zero_grad()
-                    a = Variable(c_phi_z_ori[j,1], requires_grad=True)
-                    a.backward(retain_graph=True)
+                    c_phi_z_ori[j,1].backward(retain_graph=True)
                     j_grads = []
                     for p in generator.parameters():
-                        #print(p.grad)
+                        # print(p.grad)
                         j_grads.append(p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
@@ -319,12 +319,12 @@ def main(opt):
                         j_grads.append(-1*p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
-                print('1st contribution to the gradient')
-                print(grads[0][0][6])
-                print('2nd contribution to the gradient')
-                print(grads[1][0][6])
-                print('3rd contribution to the gradient')
-                print(grads[2][0][6])
+                # print('1st contribution to the gradient')
+                # print(grads[0][0][6])
+                # print('2nd contribution to the gradient')
+                # print(grads[1][0][6])
+                # print('3rd contribution to the gradient')
+                # print(grads[2][0][6])
                 # grads should be of length 3
                 # grads[0] should be of length BATCH SIZE
                 # 3.j
@@ -368,13 +368,47 @@ def main(opt):
 
 		# Train the discriminator
         batch_G_loss = 0.0
-        for a in range(D_STEPS):
-            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
-            dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE, SEQ_LEN)
-            for b in range(D_EPOCHS):
-                loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
-                batch_G_loss = loss
-                print('Batch [{}] Discriminator Loss at step {} and epoch {}: {}'.format(total_batch, a, b, loss))
+
+        for b in range(D_EPOCHS):
+            for data, _ in gen_data_iter:
+                data = Variable(data)
+                real_data = convert_to_one_hot(data, VOCAB_SIZE, cuda)
+                real_target = Variable(torch.ones((data.size(0), 1)))
+
+                # prob = generator.forward(inputs)
+                # theta_prime = g_output_prob(prob)
+                samples = generator.sample(data.size(0), g_sequence_len) # bs x seq_len
+                fake_data = convert_to_one_hot(samples, VOCAB_SIZE, cuda) # bs x seq_len x vocab_size
+
+                # fake_data = sample_one_hot(theta_prime, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda) # bs x seq_len x vocab_size
+                fake_target = Variable(torch.zeros((data.size(0), 1)))
+
+                if cuda:
+                    real_target = real_target.cuda()
+                    fake_target = fake_target.cuda()
+                    real_data = real_data.cuda()
+                    fake_data = fake_data.cuda()
+
+                
+                real_pred = torch.exp(discriminator(real_data)[:, 1])
+                fake_pred = torch.exp(discriminator(fake_data)[:, 1])
+
+
+                D_real_loss = dis_criterion_bce(real_pred, real_target)
+                D_fake_loss = dis_criterion_bce(fake_pred, fake_target)
+                D_loss = D_real_loss + D_fake_loss
+                dis_optimizer.zero_grad()
+                D_loss.backward()
+                dis_optimizer.step()
+
+            gen_data_iter.reset()
+            # for a in range(D_STEPS):
+            #     samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
+            #     dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE, SEQ_LEN)
+            #     for b in range(D_EPOCHS):
+            #         loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
+            #         batch_G_loss = loss
+            print('Batch [{}] Discriminator Loss at step and epoch {}: {}'.format(total_batch, b, D_loss.data[0]))
         if visualize:
             adversarial_D_loss_logger.log(total_batch, batch_G_loss)
 
