@@ -35,6 +35,12 @@ def generate_samples(model, batch_size, generated_num, output_file, cuda=False):
     for _ in range(int(generated_num / batch_size)):
         sample = model.sample(batch_size, g_sequence_len).cpu().data.numpy().tolist()
         samples.extend(sample)
+
+    if len(samples) < generated_num:
+        delta_samples = model.sample(generated_num - len(samples), g_sequence_len).cpu().data.numpy().tolist()
+        samples.extend(delta_samples)
+    assert len(samples) == generated_num
+
     with open(output_file, 'w') as fout:
         for sample in samples:
             string = ' '.join([str(s) for s in sample])
@@ -54,7 +60,7 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
         num_iters = dec * int(GENERATED_NUM / BATCH_SIZE)
     for (data, target) in data_iter:
     	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
-        print(f"In train_epoch: i (batch number) = {i}")
+        # print(f"In train_epoch: i (batch number) = {i}")
         data = Variable(data)
         target = Variable(target)
         if cuda:
