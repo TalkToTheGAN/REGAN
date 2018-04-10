@@ -34,17 +34,23 @@ THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
+
 torch.manual_seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
+SEQ_LEN = 3     # or 15
 # related to data
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
 else:
     POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
-NEGATIVE_FILE = 'gene.data'
-EVAL_FILE = 'eval.data'
+
+if SEQ_LEN == 3:
+    POSITIVE_FILE = 'data/math_equation_data_3.txt'
+NEGATIVE_FILE = 'gene.data' if SEQ_LEN == 15 else 'gene_3.data'
+EVAL_FILE = 'eval.data' if SEQ_LEN == 15  else 'eval_3.data'
+
 if SPACES:
     VOCAB_SIZE = 6
 else:
@@ -52,6 +58,7 @@ else:
 # pre-training
 MLE = False # If True, do pre-training, otherwise, load weights
 weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
+
 PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
@@ -61,7 +68,7 @@ CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
-TOTAL_EPOCHS = 4 # can be a decimal number
+TOTAL_EPOCHS = 3 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
@@ -70,25 +77,29 @@ D_EPOCHS = 1 if isDebug else 2
 # Generator Parameters
 g_emb_dim = 32
 g_hidden_dim = 32
-g_sequence_len = 15
+g_sequence_len = SEQ_LEN
 # Discriminator Parameters
 d_emb_dim = 64
 #d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 #d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
-d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
+# d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+d_filter_sizes = [1, 2, 3]
+# d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
+d_num_filters = [100, 200, 200]
 d_dropout = 0.75
 d_num_class = 2
 d_lstm_hidden_dim = 32
 DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
 DEFAULT_TEMPERATURE = 1
+
 # Annex network parameters
 c_filter_sizes = [1, 3, 5, 7, 9, 15]
 c_num_filters = [100, 200, 200, 200, 100, 100]
 c_lstm_hidden_dim = 32
-#c_filter_sizes = [1, 3]
-#c_num_filters = [100, 200]
 
+if SEQ_LEN == 3:
+    c_filter_sizes = [1, 3]
+    c_num_filters = [100, 200]
 
 def main(opt):
 
@@ -125,6 +136,7 @@ def main(opt):
     
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
+    # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5, seq_len=SEQ_LEN)  # Recreated npy file
 
     gen_criterion = nn.NLLLoss(size_average=False)
     gen_optimizer = optim.Adam(generator.parameters())
@@ -165,7 +177,7 @@ def main(opt):
     print('Pretrain Discriminator ...')
     for epoch in range(PRE_EPOCH_DIS):
         samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
-        dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
+        dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE, SEQ_LEN)
         for _ in range(PRE_ITER_DIS):
             loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, 1, 1, cuda)
             print('Epoch [%d], loss: %f' % (epoch, loss))
@@ -352,7 +364,7 @@ def main(opt):
         batch_G_loss = 0.0
         for a in range(D_STEPS):
             samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
-            dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE)
+            dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE, SEQ_LEN)
             for b in range(D_EPOCHS):
                 loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
                 batch_G_loss = loss

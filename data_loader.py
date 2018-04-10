@@ -2,6 +2,8 @@ import random
 import numpy as np
 import torch
 
+# from main import BATCH_SIZE, VOCAB_SIZE, g_sequence_len
+
 class DataLoader:
     
     def __init__(self, file_path, batch_size=16):
@@ -12,8 +14,8 @@ class DataLoader:
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4,
-            '_': 5,
+            '/': 4
+            # '_': 5,
             #'\n': 6
         }
         self.ix_to_char = {v:k for (k,v) in self.char_to_ix.items()}
@@ -56,14 +58,18 @@ class DataLoader:
         # contains target data to be returned
         all_target_data = []
         
-        for line in batch_lines:
+        for i,line in enumerate(batch_lines):
             # convert char to index (do this for input data and target data)
             # here input data and target data are staggered by one position
             input_data = [self.char_to_ix[c] for c in line]
             # target doesn't contain the first char, add 6 (maps to '\n') to end
+            if i == end_index-1:
+                print('break here')
             target_data = input_data[1:]
             target_data.append(0)
-            
+
+            print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
+
             all_input_data.append(input_data)
             all_target_data.append(target_data)
 
@@ -78,15 +84,19 @@ class DataLoader:
             self.lines = f.read().split('\n')
         self.total_lines = len(self.lines)
 
-    def frequency(self, file_path):
-        freq_arr = np.zeros((6,6))
+    def frequency(self, file_path, vocab_size=5, seq_len=15):
+        freq_arr = np.zeros((vocab_size,vocab_size))
         with open(file_path, 'r') as f:
             self.lines = f.read().split('\n')
             chars = list(self.lines)
     
             for i in range(1,len(chars)):
                 freq_arr[self.char_to_ix.get(chars[i-1]),self.char_to_ix.get(chars[i])]+=1
-        np.save('freq_array.npy',freq_arr/np.sum(freq_arr))
+
+        if seq_len == 15:
+            np.save('freq_array.npy',freq_arr/np.sum(freq_arr))
+        elif seq_len == 3:
+            np.save('freq_array_3.npy', freq_arr / np.sum(freq_arr))
 
 
         self.total_lines = len(self.lines)
