@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+from torch.distributions import Categorical
 
 from generator import Generator
 from discriminator import Discriminator
@@ -107,9 +108,9 @@ def softmax_with_temp(z, temperature, cuda=False):
     :param cuda:
     :return:
     '''
-    soft_out = F.softmax(z / temperature, dim=1)
+    soft_out = Variable(F.softmax(z / temperature, dim=1))
     if cuda:
-        soft_out.cuda()
+        soft_out = soft_out.cuda()
 
     return soft_out
 
@@ -123,7 +124,7 @@ def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
     '''
     u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
     if cuda:
-        u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE)))).cuda()
+        u = u.cuda()
         theta_prime = theta_prime.cuda()
     z = torch.log(theta_prime) - u
     return z
@@ -141,20 +142,20 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
         z_tilde[i,int(b[i])]=-torch.log(-torch.log(v[i,int(b[i])]))
     if cuda:
         z_tilde.cuda()
-
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
 def prob_to_seq(x, cuda=False):
     batch_size = x.size(0); seq_len = x.size(1); edim = x.size(2)
+    print(seq_len)
     x_refactor = Variable(torch.zeros(batch_size, seq_len))
     if cuda:
         x_refactor = x_refactor.cuda()
 
     for i in range(seq_len):
-        # x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
-        test = torch.multinomial(x[:,i,:], 1, replacement=True).view(x.size(0))
-        x_refactor[:,i] = test
+        x_refactor[:,i] = torch.max(x[:,i,:], 1)[1]
+        #test = Categorical(x[:,i,:]).sample().view(x.size(0))
+        #x_refactor[:,i] = test
 
     return x_refactor
 
@@ -174,6 +175,8 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
 
     f_lambda_z = softmax_with_temp(z, temperature, cuda=cuda)
     f_lambda_z_tilde = softmax_with_temp(z_tilde, temperature, cuda=cuda)
+    print(f_lambda_z)
+    print(f_lambda_z_tilde)
 
     f_lambda_z = f_lambda_z.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
     f_lambda_z_tilde = f_lambda_z_tilde.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
@@ -185,7 +188,7 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
 
     if GD == 'REBAR':
         assert eta is not None
-        return discriminator.forward(eta * f_lambda_z), discriminator.forward(eta * f_lambda_z_tilde)
+        return eta*discriminator.forward(f_lambda_z), eta*discriminator.forward(f_lambda_z_tilde)
 
     if (GD == 'RELAX') or (GD == "REINFORCE"):
         c1=c_phi_hat.forward(z) + discriminator.forward(f_lambda_z)

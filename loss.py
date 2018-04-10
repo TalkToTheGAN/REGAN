@@ -214,11 +214,16 @@ class VarianceLoss(nn.Module):
             square_term = square_term.cuda()
             normal_term = normal_term.cuda()
         for j in range(bs):
+            #print('gradients', grad[j][n_layers-1])
             square_term = torch.add(square_term, grad[j][n_layers-1]**2)
+            #print('running square', square_term)
             normal_term = torch.add(normal_term, grad[j][n_layers-1])
+            #print('running sum', normal_term)
         square_term /= bs
         normal_term /= bs
         normal_term = normal_term ** 2
+        print(square_term)
+        print(normal_term)
         return square_term - normal_term
 
 

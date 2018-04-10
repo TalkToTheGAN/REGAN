@@ -50,13 +50,13 @@ if SPACES:
 else:
     VOCAB_SIZE = 5
 # pre-training
-MLE = False # If True, do pre-training, otherwise, load weights
+MLE = True # If True, do pre-training, otherwise, load weights
 weights_path = "checkpoints/REBAR_space_False_preTrainG_epoch_2.pth"
-PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
+PRE_EPOCH_GEN = 2.5 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
+GD = "REBAR" # "REINFORCE" or "REBAR" or "RELAX"
 CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
@@ -112,9 +112,9 @@ def main(opt):
         use_cuda = True
     print(n_gen)
     discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
-    # discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
+    #discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    # c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
+    #c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
@@ -222,10 +222,14 @@ def main(opt):
             # prob has size (BS*sequence_len, VOCAB_SIZE)
             # 3.a
             theta_prime = g_output_prob(prob)
+            print(theta_prime)
             # theta_prime has size (BS*sequence_len, VOCAB_SIZE)
             # 3.e and f
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
-            #print(c_phi_z_tilde_ori)
+            print(c_phi_z_ori)
+            print(c_phi_z_tilde_ori)
+            c_phi_z_ori = Variable(c_phi_z_ori, requires_grad=True)
+            c_phi_z_tilde_ori = Variable(c_phi_z_tilde_ori, requires_grad=True)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
             if opt.cuda:
@@ -285,9 +289,11 @@ def main(opt):
                 partial_grads = []
                 for j in range(BATCH_SIZE):
                     generator.zero_grad()
-                    c_phi_z_ori[j,1].backward(retain_graph=True)
+                    a = Variable(c_phi_z_ori[j,1], requires_grad=True)
+                    a.backward(retain_graph=True)
                     j_grads = []
                     for p in generator.parameters():
+                        #print(p.grad)
                         j_grads.append(p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
@@ -298,15 +304,16 @@ def main(opt):
                     c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
                     j_grads = []
                     for p in generator.parameters():
+                        #print(p.grad)
                         j_grads.append(-1*p.grad)
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
-                # print('1st contribution to the gradient')
-                # print(grads[0][0][6])
-                # print('2nd contribution to the gradient')
-                # print(grads[1][0][6])
-                # print('3rd contribution to the gradient')
-                # print(grads[2][0][6])
+                print('1st contribution to the gradient')
+                print(grads[0][0][6])
+                print('2nd contribution to the gradient')
+                print(grads[1][0][6])
+                print('3rd contribution to the gradient')
+                print(grads[2][0][6])
                 # grads should be of length 3
                 # grads[0] should be of length BATCH SIZE
                 # 3.j
