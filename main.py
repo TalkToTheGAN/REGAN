@@ -40,7 +40,7 @@ torch.manual_seed(SEED)
 BATCH_SIZE = 128
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
-SEQ_LEN = 15     # or 15
+SEQ_LEN = 3     # 3 or 15
 # related to data
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
@@ -58,13 +58,13 @@ else:
     VOCAB_SIZE = 5
 # pre-training
 MLE = False # If True, do pre-training, otherwise, load weights
-weights_path = "checkpoints/MLE_space_False_length_15_preTrainG_epoch_2.pth"
-PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
+weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0.pth"
+PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
 # adversarial training
-GD = "REINFORCE" # "REINFORCE" or "REBAR" or "RELAX"
-CHECK_VARIANCE = True
+GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
+CHECK_VARIANCE = False
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
@@ -415,7 +415,7 @@ def main(opt):
             #         batch_G_loss = loss
             print('Batch [{}] Discriminator Loss at step and epoch {}: {}'.format(total_batch, b, D_loss.data[0]))
         if visualize:
-            adversarial_D_loss_logger.log(total_batch, batch_G_loss)
+            adversarial_D_loss_logger.log(total_batch, D_loss.data[0])
 
     if not visualize:
         plt.plot(gen_scores)
