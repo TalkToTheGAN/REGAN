@@ -30,76 +30,79 @@ isDebug = True
 
 # ================== Parameter Definition =================
 
-# Basic Training Parameters
+# BASIC TRAINING PARAMETERS
 THC_CACHING_ALLOCATOR = 0
 SEED = 88
 random.seed(SEED)
 np.random.seed(SEED)
-
 torch.manual_seed(SEED)
 BATCH_SIZE = 128
+# DATA
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
-SEQ_LEN = 3     # 3 or 15
-# related to data
+SEQ_LEN = 3 # 15 for SPACES = True, 3 or 15 for SPACES = False
 if SPACES:
     POSITIVE_FILE = 'data/math_equation_data.txt'
 else:
     POSITIVE_FILE = 'data/math_equation_data_no_spaces.txt'    
-
 if SEQ_LEN == 3:
     POSITIVE_FILE = 'data/math_equation_data_3.txt'
 NEGATIVE_FILE = 'gene.data' if SEQ_LEN == 15 else 'gene_3.data'
 EVAL_FILE = 'eval.data' if SEQ_LEN == 15  else 'eval_3.data'
-
 if SPACES:
     VOCAB_SIZE = 6
 else:
     VOCAB_SIZE = 5
-# pre-training
-MLE = False # If True, do pre-training, otherwise, load weights
-weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0.pth"
-PRE_EPOCH_GEN = 1 if isDebug else 120 # can be a decimal number
+# PRE-TRAINING
+# Loading weights currently not supported if SPACES = True
+MLE = True # If True, do pre-training, otherwise, load weights
+if SEQ_LEN == 3:
+    weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0_official.pth"
+else:
+    weights_path = "checkpoints/MLE_space_False_length_15_preTrainG_epoch_2_official.pth"
+PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
-# adversarial training
-GD = "RELAX" # "REINFORCE" or "REBAR" or "RELAX"
-CHECK_VARIANCE = False
+# ADVERSARIAL TRAINING
+GD = "RELAX" # "MLE" or REINFORCE" or "REBAR" or "RELAX"
+if GD == "MLE":
+    TOTAL_EPOCHS = 0
+CHECK_VARIANCE = True
 if GD == "RELAX":
     CHECK_VARIANCE = True
 UPDATE_RATE = 0.8
 TOTAL_EPOCHS = 3 # can be a decimal number
 TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
-print(TOTAL_BATCH)
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
-# Generator Parameters
+# GENERATOR
 g_emb_dim = 32
 g_hidden_dim = 32
 g_sequence_len = SEQ_LEN
-# Discriminator Parameters
+# DISCRIMINATOR
 d_emb_dim = 64
-#d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
-#d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-# d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
-d_filter_sizes = [1, 2, 3]
-# d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
-d_num_filters = [100, 200, 200]
+if SEQ_LEN == 3:
+    d_filter_sizes = [1, 2, 3]
+    d_num_filters = [100, 200, 200]
+else:
+    d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+    d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160]
 d_dropout = 0.75
 d_num_class = 2
 d_lstm_hidden_dim = 32
-DEFAULT_ETA = 1             #for REBAR only. Note: Naive value, in paper they estimate value
-DEFAULT_TEMPERATURE = 1
-
-# Annex network parameters
-c_filter_sizes = [1, 3, 5, 7, 9, 15]
-c_num_filters = [100, 200, 200, 200, 100, 100]
+# ANNEX NETWORK
 c_lstm_hidden_dim = 32
-
 if SEQ_LEN == 3:
     c_filter_sizes = [1, 3]
     c_num_filters = [100, 200]
+else: 
+    c_filter_sizes = [1, 3, 5, 7, 9, 15]
+    c_num_filters = [100, 200, 200, 200, 100, 100]
+# OTHER HYPER-PARAMETERS
+DEFAULT_ETA = 1 #for REBAR only. Note: Naive value, in paper they estimate value
+DEFAULT_TEMPERATURE = 1
+
 
 def main(opt):
 
@@ -121,11 +124,9 @@ def main(opt):
     if cuda:
         n_gen = n_gen.cuda()
         use_cuda = True
-    print(n_gen)
-    # discriminator = Discriminator(d_num_class, VOCAB_SIZE, d_emb_dim, d_filter_sizes, d_num_filters, d_dropout)
+    print('Number of parameters in the generator: {}'.format(n_gen))
     discriminator = LSTMDiscriminator(d_num_class, VOCAB_SIZE, d_lstm_hidden_dim, use_cuda)
     c_phi_hat = AnnexNetwork(d_num_class, VOCAB_SIZE, d_emb_dim, c_filter_sizes, c_num_filters, d_dropout, BATCH_SIZE, g_sequence_len)
-    # c_phi_hat = LSTMAnnexNetwork(d_num_class, VOCAB_SIZE, c_lstm_hidden_dim, BATCH_SIZE, g_sequence_len, use_cuda)
     if cuda:
         generator = generator.cuda()
         discriminator = discriminator.cuda()
@@ -136,7 +137,6 @@ def main(opt):
     
     # Load data from file
     gen_data_iter = DataLoader(POSITIVE_FILE, BATCH_SIZE)
-    # gen_data_iter.frequency(POSITIVE_FILE, vocab_size=5, seq_len=SEQ_LEN)  # Recreated npy file
 
     gen_criterion = nn.NLLLoss(size_average=False)
     gen_optimizer = optim.Adam(generator.parameters())
@@ -155,7 +155,10 @@ def main(opt):
             generated_string = eval_iter.convert_to_char(samples)
             print(generated_string)
             eval_score = get_data_goodness_score(generated_string, SPACES)
-            kl_score = get_data_freq(generated_string)
+            if SPACES == False:
+                kl_score = get_data_freq(generated_string)
+            else:
+                kl_score = -1
             freq_score = get_char_freq(generated_string, SPACES)
             pre_train_scores.append(eval_score)
             print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
@@ -168,6 +171,31 @@ def main(opt):
                 pretrain_G_score_logger.log(epoch, eval_score)
     else:
         generator.load_state_dict(torch.load(weights_path))
+
+    # Finishing training with MLE  
+    if GD == "MLE":   
+        for epoch in range(3*int(GENERATED_NUM/BATCH_SIZE)):
+            loss = train_epoch_batch(generator, gen_data_iter, gen_criterion, gen_optimizer, PRE_EPOCH_GEN, epoch, int(GENERATED_NUM/BATCH_SIZE), cuda)
+            print('Epoch [%d] Model Loss: %f'% (epoch, loss))
+            samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, EVAL_FILE)
+            eval_iter = DataLoader(EVAL_FILE, BATCH_SIZE)
+            generated_string = eval_iter.convert_to_char(samples)
+            print(generated_string)
+            eval_score = get_data_goodness_score(generated_string, SPACES)
+            if SPACES == False:
+                kl_score = get_data_freq(generated_string)
+            else:
+                kl_score = -1
+            freq_score = get_char_freq(generated_string, SPACES)
+            pre_train_scores.append(eval_score)
+            print('Epoch [%d] Generation Score: %f' % (epoch, eval_score))
+            print('Epoch [%d] KL Score: %f' % (epoch, kl_score))
+            print('Epoch [{}] Character distribution: {}'.format(epoch, list(freq_score)))
+            
+            torch.save(generator.state_dict(), f"checkpoints/MLE_space_{SPACES}_length_{SEQ_LEN}_preTrainG_epoch_{epoch}.pth")
+            
+            if visualize:
+                pretrain_G_score_logger.log(epoch, eval_score)
 
     # Pretrain Discriminator
     dis_criterion = nn.NLLLoss(size_average=False)
@@ -187,7 +215,7 @@ def main(opt):
     # Adversarial Training 
     rollout = Rollout(generator, UPDATE_RATE)
     print('#####################################################')
-    print('Start Adversatial Training...\n')
+    print('Start Adversarial Training...\n')
     
     gen_gan_loss = GANLoss()
     gen_gan_optm = optim.Adam(generator.parameters())
@@ -199,7 +227,6 @@ def main(opt):
     
     dis_criterion = nn.NLLLoss(size_average=False)
     dis_criterion_bce = nn.BCELoss()
-
     dis_optimizer = optim.Adam(discriminator.parameters())
     if cuda:
         dis_criterion = dis_criterion.cuda()
@@ -212,12 +239,11 @@ def main(opt):
     gen_scores = pre_train_scores
     
     for total_batch in range(TOTAL_BATCH):
-        ## Train the generator for one step
+        # Train the generator for one step
         for it in range(G_STEPS):
             samples = generator.sample(BATCH_SIZE, g_sequence_len)
-            #print(samples)
             # samples has size (BS, sequence_len)
-            # construct the input to the generator, add zeros before samples and delete the last column
+            # Construct the input to the generator, add zeros before samples and delete the last column
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
@@ -226,7 +252,7 @@ def main(opt):
             if opt.cuda:
                 inputs=inputs.cuda()
                 targets=targets.cuda()
-            # calculate the reward
+            # Calculate the reward
             rewards = rollout.get_reward(samples, discriminator, VOCAB_SIZE, cuda)
             rewards = Variable(torch.Tensor(rewards))
             if cuda:
@@ -242,10 +268,6 @@ def main(opt):
             c_phi_z_ori, c_phi_z_tilde_ori = c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=DEFAULT_TEMPERATURE, eta=DEFAULT_ETA, cuda=cuda)
             c_phi_z_ori = torch.exp(c_phi_z_ori)
             c_phi_z_tilde_ori = torch.exp(c_phi_z_tilde_ori)
-            # print('aaaaaaaaaaaaaaaaaaaaaaa')
-            # print(rewards)
-            # print('bbbbbbbbbbbbbbbbbbbbb')
-            # print(c_phi_z_tilde_ori)
             c_phi_z = torch.sum(c_phi_z_ori[:,1])/BATCH_SIZE
             c_phi_z_tilde = -torch.sum(c_phi_z_tilde_ori[:,1])/BATCH_SIZE
             if opt.cuda:
@@ -285,24 +307,17 @@ def main(opt):
                 # 3.g new gradient loss for relax 
                 cond_prob = gen_gan_loss.forward_reward(i, samples, new_prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
                 c_term = gen_gan_loss.forward_reward(i, samples, new_prob, c_phi_z_tilde_ori[:,1], BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-                #print(cond_prob[0])
-                #print(c_term[0])
                 if GD != "REINFORCE":
                     cond_prob = torch.add(cond_prob, (-1)*c_term)
                 new_prob[:, i, :].backward(cond_prob, retain_graph=True)
-            # visu_grads = []
-            # for p in generator.parameters():
-            #     visu_grads.append(p.grad.clone())
-            # print("Checking gradients:")
-            # print(visu_grads[6])
             # 3.h - still training the generator, with the last two terms of the RELAX equation
             if GD != "REINFORCE":
                 c_phi_z.backward(retain_graph=True)
                 c_phi_z_tilde.backward(retain_graph=True)
             gen_gan_optm.step()
             # 3.i
-            # c_phi_z term
             if CHECK_VARIANCE:
+                # c_phi_z term
                 partial_grads = []
                 for j in range(BATCH_SIZE):
                     generator.zero_grad()
@@ -319,7 +334,6 @@ def main(opt):
                     c_phi_z_tilde_ori[j,1].backward(retain_graph=True)
                     j_grads = []
                     for p in generator.parameters():
-                        #print(p.grad)
                         j_grads.append(-1*p.grad.clone())
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
@@ -337,15 +351,12 @@ def main(opt):
                     for i in range(len(grads[0])):
                         for j in range(len(grads[0][i])):
                             all_grads[i][j] = torch.add(torch.add(all_grads[i][j], grads[1][i][j]), grads[2][i][j])
-                # print('sum')
-                # print(all_grads[0][6])
                 # all_grads should be of length BATCH_SIZE
                 c_phi_hat_optm.zero_grad()
                 var_loss = c_phi_hat_loss.forward(all_grads, cuda)  #/n_gen
                 true_variance = c_phi_hat_loss.forward_variance(all_grads, cuda)
                 var_loss.backward()
                 c_phi_hat_optm.step()
-                print(true_variance)
                 print('Batch [{}] Estimate of the variance of the gradient at step {}: {}'.format(total_batch, it, true_variance[0]))
                 if visualize:
                     G_variance_logger.log((total_batch + it), true_variance[0])
@@ -357,7 +368,10 @@ def main(opt):
                 generated_string = eval_iter.convert_to_char(samples)
                 print(generated_string)
                 eval_score = get_data_goodness_score(generated_string, SPACES)
-                kl_score = get_data_freq(generated_string)
+                if SPACES == False:
+                    kl_score = get_data_freq(generated_string)
+                else:
+                    kl_score = -1
                 freq_score = get_char_freq(generated_string, SPACES)
                 gen_scores.append(eval_score)
                 print('Batch [%d] Generation Score: %f' % (total_batch, eval_score))
@@ -371,33 +385,28 @@ def main(opt):
                     [G_text_logger.log(line) for line in generated_string]
                     adversarial_G_score_logger.log(total_batch, eval_score)
 
-		# Train the discriminator
+        # Train the discriminator
         batch_G_loss = 0.0
 
         for b in range(D_EPOCHS):
+
             for data, _ in gen_data_iter:
+
                 data = Variable(data)
                 real_data = convert_to_one_hot(data, VOCAB_SIZE, cuda)
                 real_target = Variable(torch.ones((data.size(0), 1)))
-
-                # prob = generator.forward(inputs)
-                # theta_prime = g_output_prob(prob)
                 samples = generator.sample(data.size(0), g_sequence_len) # bs x seq_len
                 fake_data = convert_to_one_hot(samples, VOCAB_SIZE, cuda) # bs x seq_len x vocab_size
-
-                # fake_data = sample_one_hot(theta_prime, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda) # bs x seq_len x vocab_size
                 fake_target = Variable(torch.zeros((data.size(0), 1)))
-
+                
                 if cuda:
                     real_target = real_target.cuda()
                     fake_target = fake_target.cuda()
                     real_data = real_data.cuda()
                     fake_data = fake_data.cuda()
-
                 
                 real_pred = torch.exp(discriminator(real_data)[:, 1])
                 fake_pred = torch.exp(discriminator(fake_data)[:, 1])
-
 
                 D_real_loss = dis_criterion_bce(real_pred, real_target)
                 D_fake_loss = dis_criterion_bce(fake_pred, fake_target)
@@ -407,13 +416,9 @@ def main(opt):
                 dis_optimizer.step()
 
             gen_data_iter.reset()
-            # for a in range(D_STEPS):
-            #     samples = generate_samples(generator, BATCH_SIZE, GENERATED_NUM, NEGATIVE_FILE)
-            #     dis_data_iter = DisDataIter(POSITIVE_FILE, NEGATIVE_FILE, BATCH_SIZE, SEQ_LEN)
-            #     for b in range(D_EPOCHS):
-            #         loss = train_epoch(discriminator, dis_data_iter, dis_criterion, dis_optimizer, D_EPOCHS, b, cuda)
-            #         batch_G_loss = loss
+
             print('Batch [{}] Discriminator Loss at step and epoch {}: {}'.format(total_batch, b, D_loss.data[0]))
+
         if visualize:
             adversarial_D_loss_logger.log(total_batch, D_loss.data[0])
 
