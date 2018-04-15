@@ -80,6 +80,30 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
     data_iter.reset()
     return math.exp(total_loss / total_words)
 
+def train_epoch_batch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, batches_per_epoch, cuda=False):
+    total_loss = 0.
+    total_words = 0.
+    j = np.random.randint(batches_per_epoch)
+    i = 0
+    for (data, target) in data_iter:
+        i += 1
+        if i == j:
+            break
+    data = Variable(data)
+    target = Variable(target)
+    if cuda:
+        data, target = data.cuda(), target.cuda()
+    target = target.contiguous().view(-1)
+    pred = model.forward(data)
+    loss = criterion(pred, target)
+    total_loss += loss.data[0]
+    total_words += data.size(0) * data.size(1)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    data_iter.reset()
+    return math.exp(total_loss / total_words)
+
 def eval_epoch(model, data_iter, criterion, cuda=False):
     total_loss = 0.
     total_words = 0.
@@ -299,8 +323,8 @@ def get_data_freq(all_data, seq_len=SEQ_LEN):
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4
-            # '_': 5,
+            '/': 4,
+            '_': 5,
             #'\n': 6
         }
     batchwise = np.zeros((VOCAB_SIZE,VOCAB_SIZE))
@@ -319,8 +343,8 @@ def get_char_freq(all_data, SPACES):
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4
-            # '_': 5,
+            '/': 4,
+            '_': 5,
             #'\n': 6
         }
     if SPACES == True:

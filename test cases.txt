@@ -1,0 +1,4 @@
+SPACES in (True, False)
+SEQ_LEN in (3, 15)
+MLE in (True, False)
+GD in ("MLE", "REINFORCE", "REBAR", "RELAX")
