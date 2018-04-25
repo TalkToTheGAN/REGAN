@@ -1,16 +1,15 @@
-# SeqGAN-PyTorch
-A implementation of SeqGAN in PyTorch, following the implementation in tensorflow.
-
+# Sequence Generation with GANs trained by Gradient Estimation
 
 ## Requirements: 
-* **PyTorch v0.1.12**
+* **PyTorch v0.4**
 * Python 3.6
 * CUDA 9.1 (For GPU)
 
 ## Origin
-The idea is from paper [SeqGAN: Sequence Generative Adversarial Nets with Policy Gradient](https://arxiv.org/pdf/1609.05473.pdf)
+The idea is from paper [SeqGAN: Sequence Generative Adversarial Nets with Policy Gradient](https://arxiv.org/pdf/1609.05473.pdf).
+We build on SeqGAN and compare three gradient estimators for sequence generation with GANs: REINFORCE (as in SeqGAN), and state-of-the-art REBAR (https://arxiv.org/pdf/1703.07370.pdf) and RELAX (https://arxiv.org/pdf/1711.00123.pdf). 
 
-The code is rewrited in PyTorch with the structure largely from [Tensorflow Implementation](https://github.com/LantaoYu/SeqGAN)
+The code is rewrited in PyTorch with the structure derived from (https://github.com/LantaoYu/SeqGAN)
 
 ## Running
 ```

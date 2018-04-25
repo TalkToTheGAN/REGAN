@@ -55,7 +55,7 @@ else:
     VOCAB_SIZE = 5
 # PRE-TRAINING
 # Loading weights currently not supported if SPACES = True
-MLE = True # If True, do pre-training, otherwise, load weights
+MLE = False # If True, do pre-training, otherwise, load weights
 if SEQ_LEN == 3:
     weights_path = "checkpoints/MLE_space_False_length_3_preTrainG_epoch_0_official.pth"
 else:
@@ -283,16 +283,9 @@ def main(opt):
             # first, re arrange prob
             new_prob = prob.view((BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
             # 3.g new gradient loss for relax 
-            batch_i_grads_1_ori = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-            # the above gradients are going to be modified when calling forward_reward_grads() again, so we have no choice but to clone them
-            batch_i_grads_1 = []
-            for i in range(BATCH_SIZE):
-                i_grads = []
-                for j in range(len(batch_i_grads_1_ori[i])):
-                    i_grads.append(batch_i_grads_1_ori[i][j].clone())
-                batch_i_grads_1.append(i_grads)
+            batch_i_grads_1 = gen_gan_loss.forward_reward_grads(samples, new_prob, rewards, generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
             batch_i_grads_2 = gen_gan_loss.forward_reward_grads(samples, new_prob, c_phi_z_tilde_ori[:,1], generator, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda)
-            # batch_i_grads should be of length BATCH SIZE of arrays of all the gradients
+            # batch_i_grads_1 and batch_i_grads_2 should be of length BATCH SIZE of arrays of all the gradients
             # # 3.i
             batch_grads = batch_i_grads_1
             if GD != "REINFORCE":
@@ -337,12 +330,15 @@ def main(opt):
                         j_grads.append(-1*p.grad.clone())
                     partial_grads.append(j_grads)
                 grads.append(partial_grads)
+                # Uncomment the below code if you want to check gradients
+                """
                 print('1st contribution to the gradient')
                 print(grads[0][0][6])
                 print('2nd contribution to the gradient')
                 print(grads[1][0][6])
                 print('3rd contribution to the gradient')
                 print(grads[2][0][6])
+                """
                 #grads should be of length 3
                 #grads[0] should be of length BATCH SIZE
                 # 3.j

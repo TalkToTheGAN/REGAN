@@ -1,4 +1,7 @@
-# -*- coding: utf-8 -*-
+'''
+Loss functions.
+'''
+
 import copy
 import torch
 import torch.nn as nn
@@ -41,16 +44,20 @@ class NLLLoss(nn.Module):
         if prob.is_cuda:
             one_hot = one_hot.cuda()
         loss = torch.masked_select(prob, one_hot)
+        
         return -torch.sum(loss)
 
 
 class GANLoss(nn.Module):
+
     """Reward-Refined NLLLoss Function for adversial training of Generator"""
+
     def __init__(self):
         super(GANLoss, self).__init__()
 
     def forward_reinforce(self, prob, target, reward, cuda=False):
         """
+        Forward function used in the SeqGAN implementation. 
         Args:
             prob: (N, C), torch Variable 
             target : (N, ), torch Variable
@@ -69,25 +76,26 @@ class GANLoss(nn.Module):
         loss = torch.masked_select(prob, one_hot)
         loss = loss * reward
         loss =  -torch.sum(loss)
+
         return loss
     
     def forward_reward(self, i, samples, prob, rewards, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
         """
-        Computes the Generator's loss in RELAX optimization setting. 
+        Returns what is used to get the gradient contribution of the i-th term of the batch.
 
         """
         conditional_proba = Variable(torch.zeros(BATCH_SIZE, VOCAB_SIZE))
         if cuda:
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
-            #conditional_proba[j, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
             conditional_proba[j, int(samples[j, i])] = 1
             conditional_proba[j, :] = - (rewards[j]/BATCH_SIZE * conditional_proba[j, :]) 
+
         return conditional_proba
 
     def forward_reward_grads(self, samples, prob, rewards, g, BATCH_SIZE, g_sequence_len, VOCAB_SIZE, cuda=False):
         """
-        Computes the Generator's loss in RELAX optimization setting. 
+        Returns a list of gradient contribution of every term in the batch
 
         """
         conditional_proba = Variable(torch.zeros(BATCH_SIZE, g_sequence_len, VOCAB_SIZE))
@@ -96,26 +104,31 @@ class GANLoss(nn.Module):
             conditional_proba = conditional_proba.cuda()
         for j in range(BATCH_SIZE):
             for i in range(g_sequence_len):
-                #conditional_proba[j, i, int(samples[j, i])] = prob[j, i, int(samples[j, i])]
                 conditional_proba[j, i, int(samples[j, i])] = 1
             conditional_proba[j, :, :] = - (rewards[j] * conditional_proba[j, :, :])
-        #print(conditional_proba[0, :, :])
         for j in range(BATCH_SIZE):
             j_grads = []
+            # since we want to isolate each contribution, we have to zero the generator's gradients here. 
             g.zero_grad()
             prob[j, :, :].backward(conditional_proba[j, :, :], retain_graph=True)
             for p in g.parameters():
                 j_grads.append(p.grad.clone())
             batch_grads.append(j_grads)
-        #print(batch_grads[0][6])
+
         return batch_grads
 
 class VarianceLoss(nn.Module):
+
     """Loss for the control variate annex network"""
+
     def __init__(self):
         super(VarianceLoss, self).__init__()
 
     def forward(self, grad, cuda = False):
+        """
+        Used to get the gradient of the variance. 
+
+        """
         bs = len(grad)
         ref = 0
         for j in range(bs):
@@ -123,13 +136,17 @@ class VarianceLoss(nn.Module):
                 ref += torch.sum(grad[j][i]**2).item()
         total_loss = np.array([ref/bs])
         total_loss = Variable(torch.Tensor(total_loss), requires_grad=True)
-        print(total_loss)
         if cuda:
             total_loss = total_loss.cuda()
+
         return total_loss
 
     def forward_variance(self, grad, cuda=False):
+        """
+        Used to get the variance of one single parameter. 
+        In this case, we take look at the last layer, then take the variance of the first parameter of this last layer in main.py
 
+        """
         bs = len(grad)
         n_layers = len(grad[0])
         square_term = torch.zeros((grad[0][n_layers-1].size()))
@@ -138,16 +155,12 @@ class VarianceLoss(nn.Module):
             square_term = square_term.cuda()
             normal_term = normal_term.cuda()
         for j in range(bs):
-            #print('gradients', grad[j][n_layers-1])
             square_term = torch.add(square_term, grad[j][n_layers-1]**2)
-            #print('running square', square_term)
             normal_term = torch.add(normal_term, grad[j][n_layers-1])
-            #print('running sum', normal_term)
         square_term /= bs
         normal_term /= bs
         normal_term = normal_term ** 2
-        print(square_term)
-        print(normal_term)
+
         return square_term - normal_term
 
 

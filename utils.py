@@ -5,32 +5,32 @@ Auxiliary functions used during training.
 import os, sys
 import random
 import math
-
 import argparse
 import tqdm
-
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.distributions import Categorical
+import scipy.stats as stat
 
 from generator import Generator
 from discriminator import Discriminator
 from annex_network import AnnexNetwork
 from data_iter import GenDataIter, DisDataIter
-import scipy.stats as stat
-
 
 from main import GENERATED_NUM, g_sequence_len, BATCH_SIZE, VOCAB_SIZE, SEQ_LEN
 
+
 def eprint(*args, **kwargs):
+
     print(*args, file=sys.stderr, **kwargs)
 
+# generates sequences with the generator (LSTM)
 def generate_samples(model, batch_size, generated_num, output_file, cuda=False):
+
     samples = []
     for _ in range(int(generated_num / batch_size)):
         sample = model.sample(batch_size, g_sequence_len).cpu().data.numpy().tolist()
@@ -48,9 +48,12 @@ def generate_samples(model, batch_size, generated_num, output_file, cuda=False):
     gen_samples = Variable(torch.LongTensor(samples[0:batch_size]))
     if cuda:
         gen_samples = gen_samples.cuda()
+
     return gen_samples
 
+# pre-training loss
 def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cuda=False):
+
     total_loss = 0.
     total_words = 0.
     i = 0
@@ -59,8 +62,6 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
     if (dec > 0) and (dec < 1):
         num_iters = dec * int(GENERATED_NUM / BATCH_SIZE)
     for (data, target) in data_iter:
-    	#tqdm(#data_iter, mininterval=2, desc=' - Training', leave=False):
-        # print(f"In train_epoch: i (batch number) = {i}")
         data = Variable(data)
         target = Variable(target)
         if cuda:
@@ -78,9 +79,12 @@ def train_epoch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, cu
             if i > num_iters:
                 break
     data_iter.reset()
+
     return math.exp(total_loss / total_words)
 
+# pre-training loss with one batch timeframe
 def train_epoch_batch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epoch, batches_per_epoch, cuda=False):
+
     total_loss = 0.
     total_words = 0.
     j = np.random.randint(batches_per_epoch)
@@ -102,9 +106,12 @@ def train_epoch_batch(model, data_iter, criterion, optimizer, PRE_EPOCH_GEN, epo
     loss.backward()
     optimizer.step()
     data_iter.reset()
+
     return math.exp(total_loss / total_words)
 
+# former evaluation function
 def eval_epoch(model, data_iter, criterion, cuda=False):
+
     total_loss = 0.
     total_words = 0.
     for (data, target) in data_iter:
@@ -119,48 +126,43 @@ def eval_epoch(model, data_iter, criterion, cuda=False):
         total_loss += loss.data[0]
         total_words += data.size(0) * data.size(1)
     data_iter.reset()
+
     return math.exp(total_loss / total_words)
+
 
 # New functions/classes
 
 # return probability distribution (in [0,1]) at the output of G
 def g_output_prob(prob):
+
     softmax = nn.Softmax(dim=1)
     theta_prime = softmax(prob)
+
     return theta_prime
 
-
+# Peforms softmax with temperature.
 def softmax_with_temp(z, temperature, cuda=False):
-    '''
-    Peforms softmax with temperature.
-    :param z:
-    :param temperature:
-    :param cuda:
-    :return:
-    '''
+
     soft_out = F.softmax(z / temperature, dim=1)
     if cuda:
         soft_out = soft_out.cuda()
 
     return soft_out
 
+# Performs a Gumbel-Softmax reparameterization of the input
 def gumbel_softmax(theta_prime, VOCAB_SIZE, cuda=False):
-    '''
-    Performs a Gumbel-Softmax reparameterization of the input
-    :param theta_prime:
-    :param VOCAB_SIZE:
-    :param cuda:
-    :return:
-    '''
+
     u = Variable(torch.log(-torch.log(torch.rand(VOCAB_SIZE))))
     if cuda:
         u = u.cuda()
         theta_prime = theta_prime.cuda()
     z = torch.log(theta_prime) - u
+
     return z
 
 # categorical re-sampling exactly as in Backpropagating through the void - Appendix B
 def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
+
     v = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     z_tilde = Variable(torch.rand(theta_prime.size(0), VOCAB_SIZE))
     if cuda:
@@ -172,10 +174,10 @@ def categorical_re_param(theta_prime, VOCAB_SIZE, b, cuda=False):
         z_tilde[i,int(b[i])]=-torch.log(-torch.log(v[i,int(b[i])]))
     if cuda:
         z_tilde.cuda()
+
     return z_tilde
 
 # when you have sequences as probability distributions, re-puts them into sequences by doing argmax
-
 def sample_one_hot(theta_prime, batch_size, seq_len, vocab_size, use_cuda):
 
     # input theta_prime dims = (batch_size * seq_len) x vocab_size
@@ -194,8 +196,8 @@ def sample_one_hot(theta_prime, batch_size, seq_len, vocab_size, use_cuda):
         samples[i] = one_hot.scatter_(1, x, 1)
 
     samples = samples.view(batch_size, seq_len, vocab_size)
-    return samples
 
+    return samples
 
 def prob_to_seq(x, cuda=False):
     batch_size = x.size(0); seq_len = x.size(1); edim = x.size(2)
@@ -211,7 +213,7 @@ def prob_to_seq(x, cuda=False):
 
     return x_refactor
 
-#3 e and f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
+# 3.e and 3.f : Defining c_phi and getting c_phi(z) and c_phi(z_tilde)
 def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=None, cuda=False):
     # 3.b
     z = gumbel_softmax(theta_prime, VOCAB_SIZE, cuda)
@@ -233,9 +235,6 @@ def c_phi_out(GD, c_phi_hat, theta_prime, discriminator, temperature=0.1, eta=No
 
     f_lambda_z = f_lambda_z.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
     f_lambda_z_tilde = f_lambda_z_tilde.view(BATCH_SIZE, g_sequence_len, VOCAB_SIZE)
-
-    # f_lambda_z = prob_to_seq(f_lambda_z, cuda)
-    # f_lambda_z_tilde = prob_to_seq(f_lambda_z_tilde, cuda)
 
     f_lambda_z = f_lambda_z.type(type_)
     f_lambda_z_tilde = f_lambda_z_tilde.type(type_)
@@ -268,22 +267,22 @@ def get_n_params(model):
         pp += nn
     return pp
 
-'''
-Per batch score 
-'''
+# per batch score 
 def get_data_goodness_score(all_data, SPACES=False):
-    # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
+
+    # all_data dim: (no_of_sequences, length_of_one_sequence), each cell is a string
     total_batch_score = 0
     for seq_index, seq_input in enumerate(all_data):
         total_batch_score += get_seq_goodness_score(seq_input, SPACES)
+
     return total_batch_score/len(all_data)
 
+# goodness score on just one sequence
 def get_seq_goodness_score(seq, SPACES=False):
+
     # seq dim is a string of length len(seq)
     if SPACES == True:
-
         score = 0
-
         for i in range(len(seq)-2):
             j = i + 3
             sliced_string = seq[i:j]
@@ -311,7 +310,9 @@ def get_seq_goodness_score(seq, SPACES=False):
 
     return score
 
+# get KL divergence between generated and original bigram distributions
 def get_data_freq(all_data, seq_len=SEQ_LEN):
+
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
     if seq_len == 3:
         groundtruth = np.load('freq_array_3.npy')
@@ -336,6 +337,7 @@ def get_data_freq(all_data, seq_len=SEQ_LEN):
     
     return stat.entropy(batchwise.reshape(-1),groundtruth.reshape(-1))
 
+# get character frequency over several batches
 def get_char_freq(all_data, SPACES):
     # all_data dim: (no_of_sequences, length_of_one_sequence), eeach cell is a string
     char_to_ix = {
