@@ -7,7 +7,6 @@ import argparse
 import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -25,7 +24,6 @@ from loss import *
 from helpers import *
 
 
-
 isDebug = True
 
 # ================== Parameter Definition =================
@@ -37,6 +35,7 @@ random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 BATCH_SIZE = 128
+
 # DATA
 GENERATED_NUM = 10000
 SPACES = False # What kind of data do you want to work on?
@@ -53,6 +52,7 @@ if SPACES:
     VOCAB_SIZE = 6
 else:
     VOCAB_SIZE = 5
+
 # PRE-TRAINING
 # Loading weights currently not supported if SPACES = True
 MLE = False # If True, do pre-training, otherwise, load weights
@@ -63,6 +63,7 @@ else:
 PRE_EPOCH_GEN = 3 if isDebug else 120 # can be a decimal number
 PRE_EPOCH_DIS = 0 if isDebug else 5
 PRE_ITER_DIS = 0 if isDebug else 3
+
 # ADVERSARIAL TRAINING
 GD = "RELAX" # "MLE" or REINFORCE" or "REBAR" or "RELAX"
 if GD == "MLE":
@@ -76,10 +77,12 @@ TOTAL_BATCH = int(TOTAL_EPOCHS * int(GENERATED_NUM/BATCH_SIZE))
 G_STEPS = 1 if isDebug else 1
 D_STEPS = 1 if isDebug else 4
 D_EPOCHS = 1 if isDebug else 2
+
 # GENERATOR
 g_emb_dim = 32
 g_hidden_dim = 32
 g_sequence_len = SEQ_LEN
+
 # DISCRIMINATOR
 d_emb_dim = 64
 if SEQ_LEN == 3:
@@ -91,6 +94,7 @@ else:
 d_dropout = 0.75
 d_num_class = 2
 d_lstm_hidden_dim = 32
+
 # ANNEX NETWORK
 c_lstm_hidden_dim = 32
 if SEQ_LEN == 3:
@@ -99,6 +103,7 @@ if SEQ_LEN == 3:
 else: 
     c_filter_sizes = [1, 3, 5, 7, 9, 15]
     c_num_filters = [100, 200, 200, 200, 100, 100]
+    
 # OTHER HYPER-PARAMETERS
 DEFAULT_ETA = 1 #for REBAR only. Note: Naive value, in paper they estimate value
 DEFAULT_TEMPERATURE = 1
