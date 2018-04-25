@@ -14,8 +14,8 @@ class DataLoader:
             '+': 1,
             '-': 2,
             '*': 3,
-            '/': 4
-            # '_': 5,
+            '/': 4,
+            '_': 5,
             #'\n': 6
         }
         self.ix_to_char = {v:k for (k,v) in self.char_to_ix.items()}
@@ -66,9 +66,9 @@ class DataLoader:
             if i == end_index-1:
                 print('break here')
             target_data = input_data[1:]
-            target_data.append(0)
+            target_data.append(random.choice([1,2,3,4]))
 
-            print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
+            # print(f"line {i}. input_data = {input_data}, target_data = {target_data}")
 
             all_input_data.append(input_data)
             all_target_data.append(target_data)

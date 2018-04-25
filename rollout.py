@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
+from helpers import *
 
 class Rollout(object):
     """Roll-out policy"""
@@ -21,7 +22,7 @@ class Rollout(object):
         self.own_model = copy.deepcopy(model)
         self.update_rate = update_rate
 
-    def get_reward(self, x, discriminator):
+    def get_reward(self, x, discriminator, VOCAB_SIZE, cuda):
         """
         Args:
             x : (batch_size, seq_len) input data
@@ -31,8 +32,9 @@ class Rollout(object):
         batch_size = x.size(0)
         seq_len = x.size(1)
 
-        samples = self.own_model.sample(batch_size, seq_len, x)
-        pred = discriminator(samples)
+        # samples = self.own_model.sample(batch_size, seq_len, x)
+        one_hot_samples = convert_to_one_hot(x, VOCAB_SIZE, cuda)
+        pred = discriminator(one_hot_samples)
         pred = pred.cpu().data[:,1].numpy()
         
         return pred
