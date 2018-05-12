@@ -1,7 +1,7 @@
 # Sequence Generation with GANs trained by Gradient Estimation
 
 ## Requirements: 
-* **PyTorch v0.4**
+* **PyTorch v0.3**
 * Python 3.6
 * CUDA 9.1 (For GPU)
 
